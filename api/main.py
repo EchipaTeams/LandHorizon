@@ -3,13 +3,20 @@
 For now /evidence returns a fixed mock, so the frontend can build against
 the contract before any real data exists.
 """
+import os
 from datetime import date
+from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import FastAPI
+import numpy as np
+import rasterio
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
+from rasterio.mask import mask
+from rasterio.warp import transform_geom
 
 app = FastAPI(title="LandHorizon API", version="0.1")
+HAND_PATH = Path(os.environ.get("HAND_PATH", Path(__file__).resolve().parents[1] / "data" / "processed" / "hand.tif"))
 
 Status = Literal["measured", "unknown"]
 Ring = Annotated[list[tuple[float, float]], Field(min_length=4)]  # closed ring: first point == last
@@ -70,7 +77,28 @@ MOCK = Evidence(
 )
 
 
+def terrain(polygon: Polygon) -> Terrain:
+    """Median HAND under the plot. No pixels with data -> unknown, never a guess."""
+    if not HAND_PATH.exists():  # a broken server, not a satellite gap: fail loudly instead of saying "unknown"
+        raise HTTPException(503, f"HAND layer missing at {HAND_PATH}; run pipeline/hand.py")
+    with rasterio.open(HAND_PATH) as src:
+        geom = transform_geom("EPSG:4326", src.crs, polygon.model_dump())
+        try:
+            # filled=False: pixels outside the plot come back masked, not as 0 (0 m is a real HAND value).
+            # all_touched=True: a small plot still gets the ~30 m pixels it touches.
+            data, _ = mask(src, [geom], crop=True, all_touched=True, filled=False)
+        except ValueError as e:
+            if "do not overlap" not in str(e):
+                raise
+            raise HTTPException(422, "Plot is outside the covered area.") from e
+    values = data.compressed()
+    values = values[~np.isnan(values)]
+    if values.size == 0:
+        return Terrain(status="unknown", hand_m=None)
+    return Terrain(status="measured", hand_m=round(float(np.median(values)), 1))
+
+
 @app.post("/evidence")
 def evidence(polygon: Polygon) -> Evidence:
-    # TODO: replace with rasterio.mask over the COGs
-    return MOCK
+    # Terrain is real; plot, flood, ground and overall are still the mock.
+    return MOCK.model_copy(update={"terrain": terrain(polygon)})
