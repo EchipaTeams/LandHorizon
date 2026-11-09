@@ -38,3 +38,32 @@ Dry window: 12–25 Sept 2023. Event window: 12–25 Sept 2024, scored against P
 
 | Run | Change | Dry flagged ≥1 | Event recall ≥1 | Event precision ≥1 |
 |---|---|---|---|---|
+| 0 | v0.1 as is (summer-2023 baseline, no filter) | 11.85 % | 61.0 % | 7.8 % |
+| A | same-season baseline 15 Aug–31 Oct 2022 | 10.52 % | 56.2 % | 7.6 % |
+| B1 | speckle 30 m | 3.45 % | 55.2 % | 12.7 % |
+| B2 | speckle 50 m | 2.16 % | 51.4 % | 14.6 % |
+| B3 | speckle 30 m + same-season baseline | 2.67 % | 50.0 % | 12.5 % |
+| B4 | speckle 50 m + same-season baseline | 1.59 % | 46.0 % | 14.3 % |
+| C1 | speckle 30 m, drop −4 dB | 1.95 % | 51.8 % | 12.6 % |
+| C2 | speckle 30 m, drop −5 dB | 0.95 % | 46.6 % | 12.6 % |
+| C3 | speckle 30 m, water −20 dB | 0.70 % | 37.1 % | 33.8 % |
+| C4 | speckle 50 m, drop −4 dB | 1.07 % | 47.8 % | 14.4 % |
+| D1 | speckle 30 m, HAND ≤ 15 m | 2.11 % | 54.6 % | 18.9 % |
+| D2 | speckle 30 m, HAND ≤ 10 m | 1.91 % | 54.6 % | 22.1 % |
+| E1 | speckle 30 m, HAND ≤ 10 m, drop −4 dB | **1.11 %** | **51.2 %** | 21.9 % |
+| E2 | speckle 30 m, HAND ≤ 10 m, drop −4.5 dB | **0.80 %** | **48.9 %** | 21.7 % |
+| E3 | speckle 30 m, HAND ≤ 15 m, drop −4.5 dB | 0.88 % | 48.9 % | 18.5 % |
+| E4 | speckle 30 m, HAND ≤ 10 m, water −19 dB | 0.95 % | 46.3 % | 32.1 % |
+
+Unless stated, runs use the summer-2023 baseline, water −18 dB and drop −3 dB. HAND comes from MERIT Hydro (`hnd`, 90 m). There were 32 runs at about 30 s each.
+
+### Result, 10 Nov 2026: no configuration passes both criteria
+- **Closest misses:** E1 fails the dry limit by 0.11 points, and E2 misses recall by 1.1 points. The criteria stay as written, so v0.2 is **not** locked in and the constants stay at v0.1.
+- **Speckle is the main source of false alarms.** A 30 m focal median cuts the dry rate from 11.9 % to 3.5 % for a small loss of recall. The same-season baseline helps only a little and costs recall, so harvested fields are a smaller factor than first assumed.
+- **HAND mostly removes event-window false alarms on high farmland.** It nearly triples precision but barely moves the dry rate, so the remaining dry false alarms lie low in the floodplain.
+- **Precision is stuck around 20–30 %, not the ~50 % the 1 % limit implied.** Inside the EMS area, the event window flags far more non-reference land than the dry window does. Either storm-wet fields count as false alarms against EMS's outline, or the EMS outline (1:25,000, 576 m² minimum mapping unit) is incomplete.
+- **Overfitting risk:** every choice was tuned on one event and one dry window. Any final setting needs a second event before it's trusted.
+- **Possible next steps** (team decision):
+  - add VH polarisation (better for water vs. bare soil)
+  - a second validation event
+  - a second dry window to see how much the 1 % varies year to year

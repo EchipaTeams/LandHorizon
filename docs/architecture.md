@@ -139,6 +139,7 @@ About 20 realistic plots around Galați, mostly non-urban, at three sizes (under
   - **Sept 2024 event (12–25 Sept) vs Copernicus EMSR758 AOI03 (Pechea), PRODUCT v1 outline:** recall at ≥1 pass stays **at least 50 %**, so the method can't pass by flagging nothing.
   - **Why 1 %:** it gives about 50 % precision on that event. Over 10 years per-pass noise still adds up, so the *events* decision below still has to filter single-pass flags.
   - Runs and results are logged in [flood-validation.md](flood-validation.md).
+  - **10 Nov 2026:** not passed yet. With a speckle filter, a HAND mask and a stricter drop, the best result is a 1.11 % dry rate at 51 % recall, or 0.80 % at 49 %. The constants stay at v0.1 until a setting passes.
 - **Flood validation:** compare with PAZ, an independent sensor, and report precision and recall. Checking only against a Sentinel-1-based map would flatter the result.
 - **Fresh clone:** someone outside the team gets it running from the README in 10 minutes.
 
