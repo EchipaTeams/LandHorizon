@@ -24,13 +24,14 @@ from datetime import date
 
 import ee
 
-ALGORITHM_VERSION = "0.1"
-# Placeholders: the dry-date test sets these before the 10-year batch.
+ALGORITHM_VERSION = "0.2"
+# Tuned 10 Nov 2026 against the dry-date test; runs and results in docs/flood-validation.md.
 VV_WATER_DB = -18     # flooded pixel is darker than this...
-DROP_DB = -3          # ...and at least this much darker than its baseline
+DROP_DB = -4          # ...and at least this much darker than its baseline
 PERMANENT_WATER = 80  # JRC occurrence % above which a pixel is river/lake, not flood
-SPECKLE_M = 0         # focal median radius applied to each pass before thresholding; 0 = off
-HAND_MAX_M = None     # if set, only pixels at most this high above drainage (MERIT Hydro) can flood
+SPECKLE_M = 30        # focal median radius applied to each pass before thresholding; 0 = off
+HAND_MAX_M = 10       # if set, only pixels at most this high above drainage (MERIT Hydro) can flood
+VH_WATER_DB = -24     # if set, a flooded pixel must also be darker than this in VH (cross-polarised)
 
 # Provisional AOI around Galați (lon_min, lat_min, lon_max, lat_max); region locks on 15 Nov.
 AOI = [27.5, 45.35, 28.25, 45.85]
@@ -39,14 +40,15 @@ CRS, SCALE = "EPSG:32635", 10  # UTM 35N, metres
 BASELINE = (date(2023, 6, 1), date(2023, 9, 1))
 
 
-def s1(aoi, start, end):
-    """Sentinel-1 IW VV passes (already in dB) over the AOI."""
-    return (ee.ImageCollection("COPERNICUS/S1_GRD")
-            .filterBounds(aoi)
-            .filterDate(start.isoformat(), end.isoformat())
-            .filter(ee.Filter.eq("instrumentMode", "IW"))
-            .filter(ee.Filter.listContains("transmitterReceiverPolarisation", "VV"))
-            .select("VV"))
+def s1(aoi, start, end, bands=("VV",)):
+    """Sentinel-1 IW passes (already in dB) over the AOI that carry all the given polarisations."""
+    col = (ee.ImageCollection("COPERNICUS/S1_GRD")
+           .filterBounds(aoi)
+           .filterDate(start.isoformat(), end.isoformat())
+           .filter(ee.Filter.eq("instrumentMode", "IW")))
+    for band in bands:
+        col = col.filter(ee.Filter.listContains("transmitterReceiverPolarisation", band))
+    return col.select(list(bands))
 
 
 def orbits(aoi, start, end):
@@ -59,26 +61,32 @@ def permanent_water():
 
 
 def flood_counts(aoi, event, baseline, water_db=VV_WATER_DB, drop_db=DROP_DB,
-                 speckle_m=SPECKLE_M, hand_max_m=HAND_MAX_M):
+                 speckle_m=SPECKLE_M, hand_max_m=HAND_MAX_M, vh_db=VH_WATER_DB):
     """Per pixel: how many event passes saw flood water, and how many passes there were."""
     can_flood = permanent_water().Not()
     if hand_max_m is not None:  # unmask: MERIT has no HAND over its own water bodies, which are low anyway
         can_flood = can_flood.And(ee.Image("MERIT/Hydro/v1_0_1").select("hnd").unmask(0).lte(hand_max_m))
 
+    bands = ("VV",) if vh_db is None else ("VV", "VH")
+
     def is_flooded(img, base):
         if speckle_m:
-            img = img.focalMedian(speckle_m, "circle", "meters")
-        return img.lt(water_db).And(img.subtract(base).lt(drop_db)).And(can_flood)
+            img = img.focalMedian(speckle_m, "circle", "meters").rename(list(bands))
+        vv = img.select("VV")
+        water = vv.lt(water_db).And(vv.subtract(base.select("VV")).lt(drop_db)).And(can_flood)
+        if vh_db is not None:
+            water = water.And(img.select("VH").lt(vh_db))
+        return water
 
     stack = ee.ImageCollection([])
     for orbit in orbits(aoi, *event):
         same_orbit = ee.Filter.eq("relativeOrbitNumber_start", orbit)
-        base_col = s1(aoi, *baseline).filter(same_orbit)
+        base_col = s1(aoi, *baseline, bands).filter(same_orbit)
         if base_col.size().getInfo() == 0:
             print(f"orbit {orbit}: no baseline passes, skipped")
             continue
         base = base_col.median()
-        stack = stack.merge(s1(aoi, *event).filter(same_orbit).map(lambda img: is_flooded(img, base)))
+        stack = stack.merge(s1(aoi, *event, bands).filter(same_orbit).map(lambda img: is_flooded(img, base)))
     return ee.Image.cat(stack.sum().rename("n_flooded"), stack.count().rename("n_passes")).toUint16()
 
 
@@ -130,10 +138,13 @@ def main():
     tune.add_argument("--drop-db", type=float, default=DROP_DB)
     tune.add_argument("--speckle-m", type=float, default=SPECKLE_M)
     tune.add_argument("--hand-max-m", type=float, default=HAND_MAX_M)
+    tune.add_argument("--vh-db", type=float, default=VH_WATER_DB)
     a = p.parse_args()
 
-    overrides = dict(water_db=a.water_db, drop_db=a.drop_db, speckle_m=a.speckle_m, hand_max_m=a.hand_max_m)
-    defaults = dict(water_db=VV_WATER_DB, drop_db=DROP_DB, speckle_m=SPECKLE_M, hand_max_m=HAND_MAX_M)
+    overrides = dict(water_db=a.water_db, drop_db=a.drop_db, speckle_m=a.speckle_m,
+                     hand_max_m=a.hand_max_m, vh_db=a.vh_db)
+    defaults = dict(water_db=VV_WATER_DB, drop_db=DROP_DB, speckle_m=SPECKLE_M,
+                    hand_max_m=HAND_MAX_M, vh_db=VH_WATER_DB)
     if not a.evaluate and (overrides != defaults or a.reference):
         p.error("--reference and the tuning overrides only work with --evaluate")
     window = a.event or a.evaluate

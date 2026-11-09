@@ -25,12 +25,13 @@ Flood is the only heavy layer and the core of the project. Flood and terrain com
 
 ## Flood method
 Thresholding, because it's explainable and a simple baseline has to be beaten before anything fancier:
-- Sentinel-1 IW, VV polarisation, worked **one relative orbit at a time** (each orbit sees the ground at a different angle).
+- Sentinel-1 IW, VV and VH polarisation, worked **one relative orbit at a time** (each orbit sees the ground at a different angle).
 - Baseline = median of a **dry** period, per orbit, outside the event window.
-- Flooded = darker than about −18 dB **and** more than about 3 dB darker than the baseline **and** not permanent water (JRC occurrence > 80 %).
+- Each pass is smoothed with a 30 m focal median first, against speckle.
+- Flooded = VV below −18 dB **and** VV more than 4 dB below the baseline **and** VH below −24 dB **and** not permanent water (JRC occurrence > 80 %) **and** at most 10 m above the nearest drainage (MERIT Hydro HAND).
 - Output per pixel: flooded passes and total passes.
 
-The numbers are placeholders. The **dry-date test** (run on dates with no known flood, with a false-alarm threshold set beforehand) and validation fix them before the full batch. They live as constants next to `ALGORITHM_VERSION` in `pipeline/flood.py`. Bump the version when they change, because it ends up in the export filename and in the evidence JSON.
+v0.2 (10 Nov 2026) set these numbers with the **dry-date test**. That test runs on dates with no known flood, against a false-alarm threshold set beforehand. They pass by a thin margin and were tuned on one event, so a second event and a second dry window must confirm them before the 10-year batch ([flood-validation.md](flood-validation.md)). They live as constants next to `ALGORITHM_VERSION` in `pipeline/flood.py`. Bump the version when they change, because it ends up in the export filename and in the evidence JSON.
 
 ## Why these choices
 - **Batch, not on request:** fast, reproducible demo; the heavy part never runs while a user waits.
@@ -139,13 +140,14 @@ About 20 realistic plots around Galați, mostly non-urban, at three sizes (under
   - **Sept 2024 event (12–25 Sept) vs Copernicus EMSR758 AOI03 (Pechea), PRODUCT v1 outline:** recall at ≥1 pass stays **at least 50 %**, so the method can't pass by flagging nothing.
   - **Why 1 %:** it gives about 50 % precision on that event. Over 10 years per-pass noise still adds up, so the *events* decision below still has to filter single-pass flags.
   - Runs and results are logged in [flood-validation.md](flood-validation.md).
-  - **10 Nov 2026:** not passed yet. With a speckle filter, a HAND mask and a stricter drop, the best result is a 1.11 % dry rate at 51 % recall, or 0.80 % at 49 %. The constants stay at v0.1 until a setting passes.
+  - **10 Nov 2026: passed with v0.2.** The dry rate is 0.92 % and recall is 50.7 %; precision is about 22 %. The margin is thin and comes from 40 configurations tuned on one event, so it is not yet confirmed.
 - **Flood validation:** compare with PAZ, an independent sensor, and report precision and recall. Checking only against a Sentinel-1-based map would flatter the result.
 - **Fresh clone:** someone outside the team gets it running from the README in 10 minutes.
 
 ## Open decisions
 - **Pilot region:** Galați is provisional and decided by the week-1 data test.
 - **Flood dates in the JSON:** one flood is seen by several passes over several days, so the proposal is to group passes into region-wide **events** (within about 10 days). That means `flood_events.tif` with one band per event plus a `flood_events.json` sidecar, and the plot reports the events it was flooded in. Not adopted yet.
+- **Baseline for the 10-year batch:** v0.2 uses one summer-2023 baseline. Over 10 years each event needs a dry baseline outside it, for example the summer of the same or the previous year. Undecided.
 - **Orphan flooded passes** (no regional event): show them as "local/unconfirmed" or drop them as noise. The dry-date test decides.
 - **Score format:** decided after customer interviews.
 

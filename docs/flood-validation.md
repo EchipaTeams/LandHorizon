@@ -55,7 +55,12 @@ Dry window: 12–25 Sept 2023. Event window: 12–25 Sept 2024, scored against P
 | E3 | speckle 30 m, HAND ≤ 15 m, drop −4.5 dB | 0.88 % | 48.9 % | 18.5 % |
 | E4 | speckle 30 m, HAND ≤ 10 m, water −19 dB | 0.95 % | 46.3 % | 32.1 % |
 
-Unless stated, runs use the summer-2023 baseline, water −18 dB and drop −3 dB. HAND comes from MERIT Hydro (`hnd`, 90 m). There were 32 runs at about 30 s each.
+| F1 | E1 + VH < −22 dB | 1.08 % | 51.2 % | 21.9 % |
+| **F2** | **E1 + VH < −24 dB → v0.2** | **0.92 %** | **50.7 %** | **22.1 %** |
+| F3 | E1 + VH < −26 dB | 0.62 % | 48.2 % | 22.8 % |
+| F4 | D2 + VH < −24 dB (drop −3 dB) | 1.60 % | 54.0 % | 22.4 % |
+
+Unless stated, runs use the summer-2023 baseline, water −18 dB and drop −3 dB. HAND comes from MERIT Hydro (`hnd`, 90 m). There were 41 runs at about 30 s each. The first 32 used about 10 EECU-h, 6.6 % of the 150 a month.
 
 ### Result, 10 Nov 2026: no configuration passes both criteria
 - **Closest misses:** E1 fails the dry limit by 0.11 points, and E2 misses recall by 1.1 points. The criteria stay as written, so v0.2 is **not** locked in and the constants stay at v0.1.
@@ -67,3 +72,8 @@ Unless stated, runs use the summer-2023 baseline, water −18 dB and drop −3 d
   - add VH polarisation (better for water vs. bare soil)
   - a second validation event
   - a second dry window to see how much the 1 % varies year to year
+
+### Result 2, 10 Nov 2026: F2 passes and becomes v0.2
+- **Settings:** speckle 30 m, VV < −18 dB, drop −4 dB, VH < −24 dB, HAND ≤ 10 m. Dry rate 0.92 % (limit 1 %), recall 50.7 % (limit 50 %), precision 22 %.
+- **VH helps only a little.** At −24 dB it removes about a sixth of the remaining dry false alarms for 0.5 points of recall.
+- **The margin is thin.** It passes by 0.08 and 0.7 points, after 41 configurations tuned on one event and one dry window. Before the 10-year batch, check it on a second dry window and a second flood event. If either fails, report it; don't retune quietly.
