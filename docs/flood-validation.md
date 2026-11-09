@@ -20,7 +20,10 @@ The files are in `data/raw/reference/`, which is gitignored. All scores are comp
   | 58 | ascending | 22 Sept |
 
   Most pixels see 3 of these passes; a strip where two orbits overlap sees all 4. The flash flood was visible on 14–15 Sept and had mostly drained by 21–22 Sept, so requiring several passes to agree throws away real flooding.
-- **Compute:** one 13-day event export cost 898.7 EECU-seconds, about 0.25 EECU-h.
+- **Compute per 13-day event export:**
+  - v0.1: 898.7 EECU-seconds, about 0.25 EECU-h
+  - v0.2: 3,754.2 EECU-seconds, about 1.04 EECU-h, so **4.2× v0.1**. That's mostly the 30 m focal median on every pass, plus VH doubling the bands.
+  - Scaled the same way, a v0.2 10-year run could exceed the 150 EECU-h monthly quota. Measure one full year before the batch; a cheaper speckle filter or the 2019–2024 fallback may be needed.
 
 ## v0.1 (placeholder thresholds), 9 Nov 2026
 Settings: VV < −18 dB, more than 3 dB below baseline, JRC occurrence ≤ 80 %, baseline 1 Jun–1 Sep 2023, no speckle filter.
@@ -60,7 +63,7 @@ Dry window: 12–25 Sept 2023. Event window: 12–25 Sept 2024, scored against P
 | F3 | E1 + VH < −26 dB | 0.62 % | 48.2 % | 22.8 % |
 | F4 | D2 + VH < −24 dB (drop −3 dB) | 1.60 % | 54.0 % | 22.4 % |
 
-Unless stated, runs use the summer-2023 baseline, water −18 dB and drop −3 dB. HAND comes from MERIT Hydro (`hnd`, 90 m). There were 41 runs at about 30 s each. The first 32 used about 10 EECU-h, 6.6 % of the 150 a month.
+Unless stated, runs use the summer-2023 baseline, water −18 dB and drop −3 dB. HAND comes from MERIT Hydro (`hnd`, 90 m). There were 41 runs at about 30 s each. They are interactive computations, not export tasks, so they don't appear in the Tasks list. The quota dashboard read 6.64 % of 150 EECU-h on 10 Nov 2026 and didn't change after the last 9 runs. The cost per evaluate run is therefore not measured yet.
 
 ### Result, 10 Nov 2026: no configuration passes both criteria
 - **Closest misses:** E1 fails the dry limit by 0.11 points, and E2 misses recall by 1.1 points. The criteria stay as written, so v0.2 is **not** locked in and the constants stay at v0.1.
@@ -75,5 +78,10 @@ Unless stated, runs use the summer-2023 baseline, water −18 dB and drop −3 d
 
 ### Result 2, 10 Nov 2026: F2 passes and becomes v0.2
 - **Settings:** speckle 30 m, VV < −18 dB, drop −4 dB, VH < −24 dB, HAND ≤ 10 m. Dry rate 0.92 % (limit 1 %), recall 50.7 % (limit 50 %), precision 22 %.
+- **Confirmed on the exported v0.2 COG** (local check, same numbers as `--evaluate`):
+  - vs PRODUCT: precision 22.1 %, recall 50.7 %
+  - vs MONIT01: precision 13.8 %, recall 64.5 %
+  - flag rate: 51–65 % inside the outlines, 2.8–3.1 % outside (v0.1: 11 %)
+  - The leftover false alarms are compact clusters on the north-western farmland, not scattered speckle.
 - **VH helps only a little.** At −24 dB it removes about a sixth of the remaining dry false alarms for 0.5 points of recall.
 - **The margin is thin.** It passes by 0.08 and 0.7 points, after 41 configurations tuned on one event and one dry window. Before the 10-year batch, check it on a second dry window and a second flood event. If either fails, report it; don't retune quietly.
