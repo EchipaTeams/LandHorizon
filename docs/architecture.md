@@ -76,6 +76,67 @@ Rules:
   - tests on core logic only
 - **Bus factor:** everyone should be able to explain the data, method, code and results.
 
+## Repository layout
+`(planned)` = agreed, but the file or folder doesn't exist yet. It appears with its first real file.
+
+```
+LandHorizon/
+├── api/                         backend: FastAPI
+│   ├── main.py                  evidence contract (Pydantic) + POST /evidence; TiTiler mounts here later
+│   └── test_main.py             tests
+├── pipeline/                    batch jobs, run ahead of time, never while a user waits
+│   ├── flood.py                 Sentinel-1 flood counts in Earth Engine → COG on Drive
+│   ├── hand.py                  HAND for the AOI → data/processed/hand.tif
+│   └── ground.py                (planned) EGMS points → data/processed/ground.tif
+├── web/                         frontend: React + Vite + MapLibre (frontend team)
+│   ├── README.md                what goes here and how to talk to the API
+│   └── src/                     (planned) suggested shape, the frontend team decides
+│       ├── api/                 client for POST /evidence (types from /openapi.json)
+│       ├── components/          map with polygon drawing, result panel
+│       └── pages/               one flow: draw a plot → result → report (PDF via print CSS)
+├── data/                        gitignored, except sample/
+│   ├── raw/                     manual downloads (EGMS)
+│   │   └── reference/           flood outlines for validation (EMSR758, PAZ)
+│   ├── processed/               COGs the API reads (hand.tif, flood, ground.tif)
+│   └── sample/                  (planned) small COGs, committed so a clean clone runs
+├── docs/
+│   └── architecture.md          this file
+├── docker-compose.yml           (planned, W4) API + web for the deployment
+├── pyproject.toml               Python dependencies (uv)
+├── uv.lock                      exact pinned versions, committed
+├── AGENTS.md                    rules for AI assistants and new teammates
+├── CLAUDE.md                    points Claude to AGENTS.md
+└── README.md                    what it is + how to run it
+```
+
+## Milestones
+Engineering only. Dates come from the team plan.
+
+| # | Milestone | By | Done when | Status |
+|---|---|---|---|---|
+| 1 | Skeleton | 8 Nov | repo, uv, contract + mock endpoint, these docs | done |
+| 2 | Terrain | 8 Nov | `POST /evidence` returns real HAND under the polygon | done |
+| 3 | Data test | Sun 15 Nov | the checks below (*Data test*) have answers; pilot region locked; frontend draws a plot and shows the mock | |
+| 4 | Real slice | Sun 22 Nov | plot → HAND + EGMS → result; flood baseline on one event (Sept 2024); dry-date test run; mock deployed publicly | |
+| 5 | Flood validated | Sun 29 Nov | precision and recall against the reference; first full batch; scoring with the unknown rule; all 3 layers real | |
+| 6 | Feature freeze | Sun 6 Dec | public URL runs the full flow; PDF via print CSS | |
+| 7 | Submit | Thu 10 Dec | bug fixes only; README tested by someone new | |
+
+## Data test (milestone 3)
+About 20 realistic plots around Galați, mostly non-urban, at three sizes (under 1 ha, 1–5 ha, larger):
+- **EGMS:** the delivery format, and how many plots get cells at each size.
+- **Flood reference:** recheck EMSR758 and the PAZ outline.
+- **HAND:** confirmed on 8 Nov; the tiles open over HTTP.
+- **Earth Engine:** measure the EECU-hours of one run (Tasks tab). The dry-date test plus two full 10-year runs must fit the 150 EECU-h/month free tier. Otherwise use 2019–2024.
+
+## Verification
+- **Unknown rule:** a plot with no data returns `status: "unknown"`, never a low value. Every layer gets this test when it goes live (terrain's is in `api/test_main.py`).
+- **Contract:** Pydantic validates every response; tests call `POST /evidence`.
+- **Terrain sanity:** known spots give plausible HAND (on 8 Nov: lake 0 m, Danube bank about 1 m, hills about 60 m).
+- **Flood, dry-date test:** run on dates with no known flood. Write the allowed false-alarm rate down **before** running. If it fails, change the constants and bump `ALGORITHM_VERSION`.
+- **Flood validation:** compare with PAZ, an independent sensor, and report precision and recall. Checking only against a Sentinel-1-based map would flatter the result.
+- **Fresh clone:** someone outside the team gets it running from the README in 10 minutes.
+
 ## Open decisions
 - **Pilot region:** Galați is provisional and decided by the week-1 data test.
 - **Flood dates in the JSON:** one flood is seen by several passes over several days, so the proposal is to group passes into region-wide **events** (within about 10 days). That means `flood_events.tif` with one band per event plus a `flood_events.json` sidecar, and the plot reports the events it was flooded in. Not adopted yet.

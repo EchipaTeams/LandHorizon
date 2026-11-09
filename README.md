@@ -6,10 +6,12 @@ How it's built and why: [docs/architecture.md](docs/architecture.md).
 
 ## Layout
 ```
-api/        FastAPI app: the evidence contract + POST /evidence (mock for now)
-pipeline/   batch jobs that turn satellite data into COGs (flood.py: Sentinel-1 in Earth Engine)
+api/        backend: the evidence contract + POST /evidence (terrain real, rest mock)
+pipeline/   batch jobs that turn satellite data into COGs (flood, HAND)
+web/        frontend: React + MapLibre (frontend team, not set up yet)
 docs/       architecture and decisions
 ```
+Full tree: [docs/architecture.md](docs/architecture.md#repository-layout).
 
 ## Run it
 Needs Python 3.14 and [uv](https://docs.astral.sh/uv/).
