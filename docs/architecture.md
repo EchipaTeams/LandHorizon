@@ -100,7 +100,8 @@ LandHorizon/
 │   ├── processed/               COGs the API reads (hand.tif, flood, ground.tif)
 │   └── sample/                  (planned) small COGs, committed so a clean clone runs
 ├── docs/
-│   └── architecture.md          this file
+│   ├── architecture.md          this file
+│   └── flood-validation.md      flood test runs and their results
 ├── docker-compose.yml           (planned, W4) API + web for the deployment
 ├── pyproject.toml               Python dependencies (uv)
 ├── uv.lock                      exact pinned versions, committed
@@ -133,7 +134,11 @@ About 20 realistic plots around Galați, mostly non-urban, at three sizes (under
 - **Unknown rule:** a plot with no data returns `status: "unknown"`, never a low value. Every layer gets this test when it goes live (terrain's is in `api/test_main.py`).
 - **Contract:** Pydantic validates every response; tests call `POST /evidence`.
 - **Terrain sanity:** known spots give plausible HAND (on 8 Nov: lake 0 m, Danube bank about 1 m, hills about 60 m).
-- **Flood, dry-date test:** run on dates with no known flood. Write the allowed false-alarm rate down **before** running. If it fails, change the constants and bump `ALGORITHM_VERSION`.
+- **Flood, dry-date test:** run on dates with no known flood. Write the allowed false-alarm rate down **before** running. If it fails, change the constants and bump `ALGORITHM_VERSION`. Criteria, fixed on 10 Nov 2026 before any test run:
+  - **Dry window 12–25 Sept 2023:** at most **1 %** of land pixels flagged in ≥1 pass. Land means pixels with ≥1 pass that are not JRC permanent water.
+  - **Sept 2024 event (12–25 Sept) vs Copernicus EMSR758 AOI03 (Pechea), PRODUCT v1 outline:** recall at ≥1 pass stays **at least 50 %**, so the method can't pass by flagging nothing.
+  - **Why 1 %:** it gives about 50 % precision on that event. Over 10 years per-pass noise still adds up, so the *events* decision below still has to filter single-pass flags.
+  - Runs and results are logged in [flood-validation.md](flood-validation.md).
 - **Flood validation:** compare with PAZ, an independent sensor, and report precision and recall. Checking only against a Sentinel-1-based map would flatter the result.
 - **Fresh clone:** someone outside the team gets it running from the README in 10 minutes.
 
