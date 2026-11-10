@@ -16,14 +16,23 @@ The pipeline turns raw data into COGs **once, ahead of time**, for one pilot reg
 
 | Layer | Source | Raw data | Processed | Result |
 |---|---|---|---|---|
-| Flood (Sentinel-1, ~10 years) | Earth Engine `COPERNICUS/S1_GRD` | Stays on Google's servers | Inside Earth Engine (`pipeline/flood.py`) | Flood COG(s), exported to Drive |
+| Flood (Sentinel-1; 2024 for now, ~10 years planned) | **Proposed, needs review:** Copernicus GFM (CEMS Global Flood Monitoring), per-pass flood + exclusion layers from the EODC STAC catalogue, no account | Not downloaded: only the AOI window of each pass is read over HTTP | Locally, counted per pixel (`pipeline/flood_gfm.py`) | `flood_gfm.tif` |
 | Ground motion (EGMS Ortho) | EGMS Explorer, login, manual download | `data/raw/` | Locally, geopandas + rasterio, rasterized once | `ground.tif` |
 | Terrain (HAND) | ASF tiles (Copernicus 30 m DEM), public COGs | Not downloaded: only the AOI window is read over HTTP | Locally, rasterio merge + clip (`pipeline/hand.py`) | `hand.tif` |
-| Validation | Copernicus EMS outlines, PAZ | `data/raw/reference/` | Compared with the flood output | Precision and recall |
+| Validation | Copernicus EMS outlines (EMSR758, EMSR293), PAZ | `data/raw/reference/` | Compared with the flood output (`pipeline/gfm_score.py`) | Precision and recall |
 
-Flood is the only heavy layer and the core of the project. Flood and terrain come first. Ground motion is shown where it exists, because plots of 1 ha or less get only 0–1 EGMS cells.
+Flood is the core of the project. With GFM it is no longer the heavy layer: the flood detection itself is done by Copernicus. Flood and terrain come first. Ground motion is shown where it exists, because plots of 1 ha or less get only 0–1 EGMS cells.
 
 ## Flood method
+**Proposed on 10 Nov 2026, needs the lead's review: use Copernicus Global Flood Monitoring (GFM).**
+- **What GFM is:** a Copernicus Emergency Management service that maps floods on every Sentinel-1 pass worldwide since 2015, with an ensemble of three published algorithms (DLR, LIST, TU Wien). For each pass it also publishes an **exclusion mask** (where Sentinel-1 can't see floods: high ground, cities, dense forest, radar shadow) and a **reference water mask** (permanent and seasonal water, never counted as flood).
+- **What we do with it:** `pipeline/flood_gfm.py` reads the AOI part of every pass and writes `flood_gfm.tif` with, per pixel, the passes that saw flood (`n_flooded`), the passes that could see it at all (`n_passes`), and one band per pass that saw any flood (for the flood dates). Excluded pixels don't count as a pass, so they stay **unknown**. Pixels under a GFM **advisory flag** (GFM's own warning that the result is unreliable that pass: dry or tilled soil, frost, snow, wind on water) don't count either, as GFM's user manual advises.
+- **Known false alarm:** freshly tilled farmland can look like water to radar. GFM's manual lists it ("agricultural practices over cropland"). On 30 Apr–1 May 2024 GFM flagged ~15,000 ha of the polder north of Lake Brateș, and a Sentinel-2 image of 29 April shows bare fields, no water. The advisory flags remove part of it (30 Apr: 7.6 % → 4.6 % of the seen area; 1 May: 6.1 % → 5.8 %), so floodplain farmland can still show false spring flood dates. Removing them needs an optical cross-check (e.g. Sentinel-2), which isn't built.
+- **Why:** it passed the same pre-registered dry-date test as our own method, by a wide margin, and was confirmed on a second, independent event. Our own v0.2 was tuned on the very data it was tested on and only passed by a hair. It also needs no compute quota and no raw-data downloads. Numbers: [flood-validation.md](flood-validation.md#copernicus-gfm-10-nov-2026).
+- **What we give up:** we can't tune it, it's 20 m instead of 10 m, and we depend on the EODC catalogue staying online (we download once and keep our own COG, so the app doesn't).
+- **Fallback:** our own thresholding method below stays in the repo, run either in Earth Engine (`flood.py`) or locally (`flood_local.py`).
+
+### Own method (v0.2), kept as fallback
 Thresholding, because it's explainable and a simple baseline has to be beaten before anything fancier:
 - Sentinel-1 IW, VV and VH polarisation, worked **one relative orbit at a time** (each orbit sees the ground at a different angle).
 - Baseline = median of a **dry** period, per orbit, outside the event window.
@@ -35,6 +44,7 @@ v0.2 (10 Nov 2026) set these numbers with the **dry-date test**. That test runs 
 
 ## Why these choices
 - **Batch, not on request:** fast, reproducible demo; the heavy part never runs while a user waits.
+- **GFM (proposed):** see *Flood method*. Validated better than our own method, free, and no heavy processing on our side.
 - **Earth Engine:** has preprocessed Sentinel-1 and runs server-side. The free tier is 150 EECU-hours a month, so measure compute before the 10-year run. A commercial product would pay for compute, which is an open cost.
 - **COG (Cloud Optimized GeoTIFF):** a GeoTIFF stored in tiles with built-in overviews and an index at the start, so a reader fetches only the bytes under one plot. That index, plus data that is read-only and precomputed, is why there's **no database**.
 - **FastAPI, not Django:** Django's strengths (ORM, admin, auth) assume a database we don't have. FastAPI gives us:
@@ -47,7 +57,14 @@ v0.2 (10 Nov 2026) set these numbers with the **dry-date test**. That test runs 
 **If accounts or saved reports are ever added:** Postgres plus auth (PostGIS only for spatial queries). The pipeline and the COGs don't change either way.
 
 ## The evidence contract
-The JSON `POST /evidence` returns is the contract between backend and frontend. **The source of truth is the Pydantic models in `api/main.py`** (browse them at `/docs`). Don't keep a second copy anywhere. Until the real data is wired in, the endpoint returns a fixed mock.
+The JSON `POST /evidence` returns is the contract between backend and frontend. **The source of truth is the Pydantic models in `api/main.py`** (browse them at `/docs`). Don't keep a second copy anywhere. Terrain and flood are real; plot, ground and overall are still a fixed mock.
+
+**Flood fields** (real since 10 Nov 2026, from `flood_gfm.tif`):
+- `status`: `unknown` when no satellite pass could see the plot (GFM excluded it, e.g. high ground or a city). Show it together with the terrain layer's `hand_m`, which usually explains why.
+- `flooded_fraction`: share of the *observed* part of the plot that was seen flooded at least once. **`null` when unknown.** This is a contract change (it was a plain number), so it needs the lead's review: a `0.0` for "never observed" would read as "never flooded", which breaks the unknown rule.
+- `flood_dates`: days a pass saw water on at least 5 % of the plot's observed pixels (`FLOOD_DATE_MIN_SHARE` in `api/main.py`). One flood seen by three passes shows up as three dates.
+- `n_passes`: the typical number of passes that observed each pixel of the plot.
+- `algorithm_version`: `gfm-ensemble`.
 
 Rules:
 - Every layer carries a `status` (`measured` / `unknown`) and how much data sits behind it (`n_passes`, `n_cells`, ...).
@@ -86,7 +103,12 @@ LandHorizon/
 │   ├── main.py                  evidence contract (Pydantic) + POST /evidence; TiTiler mounts here later
 │   └── test_main.py             tests
 ├── pipeline/                    batch jobs, run ahead of time, never while a user waits
-│   ├── flood.py                 Sentinel-1 flood counts in Earth Engine → COG on Drive
+│   ├── flood_gfm.py             (proposed) flood history from Copernicus GFM → data/processed/flood_gfm.tif
+│   ├── gfm_score.py             scores GFM against EMS outlines and the dry-date test, like our own method
+│   ├── flood.py                 (fallback) Sentinel-1 flood counts in Earth Engine → COG on Drive; holds the thresholds
+│   ├── flood_local.py           (fallback prototype) the same method run locally: CDSE download + SNAP → COG
+│   ├── s1_preprocess.xml        SNAP graph for flood_local.py (the same steps as Earth Engine's S1_GRD)
+│   ├── test_flood_local.py      tests for the local flood method
 │   ├── hand.py                  HAND for the AOI → data/processed/hand.tif
 │   └── ground.py                (planned) EGMS points → data/processed/ground.tif
 ├── web/                         frontend: React + Vite + MapLibre (frontend team)
@@ -97,8 +119,8 @@ LandHorizon/
 │       └── pages/               one flow: draw a plot → result → report (PDF via print CSS)
 ├── data/                        gitignored, except sample/
 │   ├── raw/                     manual downloads (EGMS)
-│   │   └── reference/           flood outlines for validation (EMSR758, PAZ)
-│   ├── processed/               COGs the API reads (hand.tif, flood, ground.tif)
+│   │   └── reference/           flood outlines for validation (EMSR758, EMSR293, PAZ)
+│   ├── processed/               COGs the API reads (hand.tif, flood_gfm.tif, ground.tif)
 │   └── sample/                  (planned) small COGs, committed so a clean clone runs
 ├── docs/
 │   ├── architecture.md          this file
@@ -132,7 +154,7 @@ About 20 realistic plots around Galați, mostly non-urban, at three sizes (under
 - **Earth Engine:** measure the EECU-hours of one run (Tasks tab). The dry-date test plus two full 10-year runs must fit the 150 EECU-h/month free tier. Otherwise use 2019–2024.
 
 ## Verification
-- **Unknown rule:** a plot with no data returns `status: "unknown"`, never a low value. Every layer gets this test when it goes live (terrain's is in `api/test_main.py`).
+- **Unknown rule:** a plot with no data returns `status: "unknown"`, never a low value. Every layer gets this test when it goes live (terrain's and flood's are in `api/test_main.py`).
 - **Contract:** Pydantic validates every response; tests call `POST /evidence`.
 - **Terrain sanity:** known spots give plausible HAND (on 8 Nov: lake 0 m, Danube bank about 1 m, hills about 60 m).
 - **Flood, dry-date test:** run on dates with no known flood. Write the allowed false-alarm rate down **before** running. If it fails, change the constants and bump `ALGORITHM_VERSION`. Criteria, fixed on 10 Nov 2026 before any test run:
@@ -141,13 +163,20 @@ About 20 realistic plots around Galați, mostly non-urban, at three sizes (under
   - **Why 1 %:** it gives about 50 % precision on that event. Over 10 years per-pass noise still adds up, so the *events* decision below still has to filter single-pass flags.
   - Runs and results are logged in [flood-validation.md](flood-validation.md).
   - **10 Nov 2026: passed with v0.2.** The dry rate is 0.92 % and recall is 50.7 %; precision is about 22 %. The margin is thin and comes from 40 configurations tuned on one event, so it is not yet confirmed.
+  - **10 Nov 2026: GFM passed the same criteria without any tuning.** Dry rate 0.09 %, recall 54.7 % (counting flood GFM can't see as missed), precision 27 %. A second event, Botoșani July 2018 (EMSR293, outline from COSMO-SkyMed, an independent radar), gave recall 57–66 % and precision 97–99 %.
 - **Flood validation:** compare with PAZ, an independent sensor, and report precision and recall. Checking only against a Sentinel-1-based map would flatter the result.
 - **Fresh clone:** someone outside the team gets it running from the README in 10 minutes.
 
 ## Open decisions
 - **Pilot region:** Galați is provisional and decided by the week-1 data test.
-- **Flood dates in the JSON:** one flood is seen by several passes over several days, so the proposal is to group passes into region-wide **events** (within about 10 days). That means `flood_events.tif` with one band per event plus a `flood_events.json` sidecar, and the plot reports the events it was flooded in. Not adopted yet.
-- **Baseline for the 10-year batch:** v0.2 uses one summer-2023 baseline. Over 10 years each event needs a dry baseline outside it, for example the summer of the same or the previous year. Undecided.
+- **Flood dates in the JSON:** for now `flood_dates` lists the **pass dates** that saw water on the plot (see *The evidence contract*). Grouping passes into region-wide **events** (within about 10 days) is still open; with GFM it would be computed from the per-pass bands already in `flood_gfm.tif`, so no new data is needed.
+- **Period in the JSON:** the flood history currently covers **2024 only**, and the contract has no field that says so, so "flooded 0 times" can't be told apart from "flooded 0 times *in 2024*". Proposal: extend to 2015–2025 (a few hours of reading) and/or add the period to the contract.
+- **Flood compute: Earth Engine or local.** Superseded by the GFM proposal if the lead accepts it; kept for the fallback. Tuning v0.2 used about 27 % of the 150 EECU-h monthly quota; each interactive evaluate run cost about 0.9 EECU-h. A v0.2 10-year batch probably doesn't fit the quota. The prototype `pipeline/flood_local.py` runs the same method locally:
+  - **Data:** Copernicus Data Space GRD scenes (free account), processed with ESA SNAP. That's the same chain Earth Engine uses, so the thresholds in `flood.py` are shared.
+  - **HAND source:** the local run uses our GLO-30 `hand.tif` instead of MERIT.
+  - **Cost:** no quota, but about 1.7 GB of download and a few minutes of SNAP per scene. Only a small AOI crop per scene is kept.
+  - **Decision:** made after comparing its output with the Earth Engine v0.2 COG ([flood-validation.md](flood-validation.md)).
+- **Baseline for the 10-year batch** (own method only; GFM handles this itself): v0.2 uses one summer-2023 baseline. Over 10 years each event needs a dry baseline outside it, for example the summer of the same or the previous year. Undecided.
 - **Orphan flooded passes** (no regional event): show them as "local/unconfirmed" or drop them as noise. The dry-date test decides.
 - **Score format:** decided after customer interviews.
 

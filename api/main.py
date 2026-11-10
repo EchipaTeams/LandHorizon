@@ -1,7 +1,8 @@
 """LandHorizon API.
 
-For now /evidence returns a fixed mock, so the frontend can build against
-the contract before any real data exists.
+/evidence returns real terrain (HAND) and real flood history (Copernicus GFM) for the plot;
+plot, ground and overall are still a fixed mock, so the frontend can build against the
+whole contract before every layer is real.
 """
 import os
 from datetime import date
@@ -16,7 +17,12 @@ from rasterio.mask import mask
 from rasterio.warp import transform_geom
 
 app = FastAPI(title="LandHorizon API", version="0.1")
-HAND_PATH = Path(os.environ.get("HAND_PATH", Path(__file__).resolve().parents[1] / "data" / "processed" / "hand.tif"))
+PROCESSED = Path(__file__).resolve().parents[1] / "data" / "processed"
+HAND_PATH = Path(os.environ.get("HAND_PATH", PROCESSED / "hand.tif"))
+FLOOD_PATH = Path(os.environ.get("FLOOD_PATH", PROCESSED / "flood_gfm.tif"))  # from pipeline/flood_gfm.py
+# A pass counts as a flood date for the plot when it saw water on at least this share of the plot's
+# observed pixels. Needs review: it keeps one stray wet pixel from becoming a "flood".
+FLOOD_DATE_MIN_SHARE = 0.05
 
 Status = Literal["measured", "unknown"]
 Ring = Annotated[list[tuple[float, float]], Field(min_length=4)]  # closed ring: first point == last
@@ -35,9 +41,9 @@ class Plot(BaseModel):
 
 class Flood(BaseModel):
     status: Status
-    flood_dates: list[date]
-    n_passes: int
-    flooded_fraction: float
+    flood_dates: list[date]          # days a satellite pass saw water on the plot (see FLOOD_DATE_MIN_SHARE)
+    n_passes: int                    # typical number of passes that observed each pixel of the plot
+    flooded_fraction: float | None   # share of the observed plot ever seen flooded; None when unknown
     algorithm_version: str
 
 
@@ -77,20 +83,42 @@ MOCK = Evidence(
 )
 
 
-def terrain(polygon: Polygon) -> Terrain:
-    """Median HAND under the plot. No pixels with data -> unknown, never a guess."""
-    if not HAND_PATH.exists():  # a broken server, not a satellite gap: fail loudly instead of saying "unknown"
-        raise HTTPException(503, f"HAND layer missing at {HAND_PATH}; run pipeline/hand.py")
-    with rasterio.open(HAND_PATH) as src:
+def read_plot(path: Path, polygon: Polygon, missing_hint: str):
+    """The raster's pixels under the plot as a masked array (bands, rows, cols), plus band descriptions."""
+    if not path.exists():  # a broken server, not a satellite gap: fail loudly instead of saying "unknown"
+        raise HTTPException(503, f"Layer missing at {path}; {missing_hint}")
+    with rasterio.open(path) as src:
         geom = transform_geom("EPSG:4326", src.crs, polygon.model_dump())
         try:
-            # filled=False: pixels outside the plot come back masked, not as 0 (0 m is a real HAND value).
-            # all_touched=True: a small plot still gets the ~30 m pixels it touches.
+            # filled=False: pixels outside the plot come back masked, not as 0 (0 is a real value).
+            # all_touched=True: a small plot still gets every pixel it touches.
             data, _ = mask(src, [geom], crop=True, all_touched=True, filled=False)
         except ValueError as e:
             if "do not overlap" not in str(e):
                 raise
             raise HTTPException(422, "Plot is outside the covered area.") from e
+        return data, src.descriptions
+
+
+def flood(polygon: Polygon) -> Flood:
+    """Flood history under the plot from GFM. Never observed -> unknown, never "not flooded"."""
+    data, names = read_plot(FLOOD_PATH, polygon, "run pipeline/flood_gfm.py")
+    n_flooded, n_passes = data[0], data[1]
+    seen = ~np.ma.getmaskarray(n_passes) & (n_passes.filled(0) > 0)
+    if not seen.any():  # GFM excluded the plot (high ground, city, forest, radar shadow) or never covered it
+        return Flood(status="unknown", flood_dates=[], n_passes=0, flooded_fraction=None,
+                     algorithm_version="gfm-ensemble")
+    dates = sorted({date.fromisoformat(name[:10]) for name, band in zip(names[2:], data[2:])
+                    if band.filled(0)[seen].mean() >= FLOOD_DATE_MIN_SHARE})
+    return Flood(status="measured", flood_dates=dates,
+                 n_passes=int(np.median(n_passes.filled(0)[seen])),
+                 flooded_fraction=round(float((n_flooded.filled(0)[seen] > 0).mean()), 3),
+                 algorithm_version="gfm-ensemble")
+
+
+def terrain(polygon: Polygon) -> Terrain:
+    """Median HAND under the plot. No pixels with data -> unknown, never a guess."""
+    data, _ = read_plot(HAND_PATH, polygon, "run pipeline/hand.py")
     values = data.compressed()
     values = values[~np.isnan(values)]
     if values.size == 0:
@@ -100,5 +128,5 @@ def terrain(polygon: Polygon) -> Terrain:
 
 @app.post("/evidence")
 def evidence(polygon: Polygon) -> Evidence:
-    # Terrain is real; plot, flood, ground and overall are still the mock.
-    return MOCK.model_copy(update={"terrain": terrain(polygon)})
+    # Terrain and flood are real; plot, ground and overall are still the mock.
+    return MOCK.model_copy(update={"terrain": terrain(polygon), "flood": flood(polygon)})
