@@ -38,6 +38,7 @@ def layers(tmp_path, monkeypatch):
     with rasterio.open(tmp_path / "flood.tif", "w", count=4, dtype="uint16", **GRID) as dst:
         dst.write(np.stack([n_flooded, n_passes, sept14, sept21]))
         dst.descriptions = ("n_flooded", "n_passes", "2024-09-14T04", "2024-09-21T04")
+        dst.update_tags(period_start="2024-01-01", period_end="2025-01-01")  # as flood_gfm.py writes them
 
     monkeypatch.setattr(main, "HAND_PATH", tmp_path / "hand.tif")
     monkeypatch.setattr(main, "FLOOD_PATH", tmp_path / "flood.tif")
@@ -57,7 +58,8 @@ def test_terrain(layers, monkeypatch):
 def test_flood(layers, monkeypatch):
     measured = client.post("/evidence", json=LEFT).json()["flood"]
     assert measured == {"status": "measured", "flood_dates": ["2024-09-14"], "n_passes": 3,
-                        "flooded_fraction": 1.0, "algorithm_version": "gfm-ensemble"}
+                        "flooded_fraction": 1.0, "algorithm_version": "gfm-ensemble",
+                        "period_start": "2024-01-01", "period_end": "2024-12-31"}  # end reported inclusive
 
     # A 5x5 px plot holds the 21 Sept wet pixel, but 1 of 25 px (4 %) is under the 5 % rule...
     big = square(28.0002, 45.4002, d=0.0045)
@@ -70,7 +72,8 @@ def test_flood(layers, monkeypatch):
     # The unknown rule: a plot no pass could see is "unknown" with no fraction, never "0 % flooded".
     unseen = client.post("/evidence", json=RIGHT).json()["flood"]
     assert unseen == {"status": "unknown", "flood_dates": [], "n_passes": 0,
-                      "flooded_fraction": None, "algorithm_version": "gfm-ensemble"}
+                      "flooded_fraction": None, "algorithm_version": "gfm-ensemble",
+                      "period_start": "2024-01-01", "period_end": "2024-12-31"}  # the period is known even here
 
     monkeypatch.setattr(main, "FLOOD_PATH", layers / "missing.tif")
     assert client.post("/evidence", json=LEFT).status_code == 503

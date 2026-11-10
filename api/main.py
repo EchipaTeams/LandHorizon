@@ -5,7 +5,7 @@ plot, ground and overall are still a fixed mock, so the frontend can build again
 whole contract before every layer is real.
 """
 import os
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -45,6 +45,8 @@ class Flood(BaseModel):
     n_passes: int                    # typical number of passes that observed each pixel of the plot
     flooded_fraction: float | None   # share of the observed plot ever seen flooded; None when unknown
     algorithm_version: str
+    period_start: date               # first day of the flood history (inclusive)
+    period_end: date                 # last day of the flood history (inclusive)
 
 
 class Ground(BaseModel):
@@ -76,7 +78,8 @@ class Evidence(BaseModel):
 MOCK = Evidence(
     plot=Plot(area_ha=0.8, n_pixels=80),
     flood=Flood(status="measured", flood_dates=[date(2024, 9, 15)], n_passes=212,
-                flooded_fraction=0.42, algorithm_version="0.1"),
+                flooded_fraction=0.42, algorithm_version="0.1",
+                period_start=date(2024, 1, 1), period_end=date(2024, 12, 31)),
     ground=Ground(status="unknown", velocity_mm_yr=None, n_cells=0, release="2019-2023"),
     terrain=Terrain(status="measured", hand_m=1.7),
     overall=Overall(status="incomplete", score=None, reasons=["no ground-motion cells under plot"]),
@@ -84,7 +87,7 @@ MOCK = Evidence(
 
 
 def read_plot(path: Path, polygon: Polygon, missing_hint: str):
-    """The raster's pixels under the plot as a masked array (bands, rows, cols), plus band descriptions."""
+    """The raster's pixels under the plot as a masked array (bands, rows, cols), its band descriptions and tags."""
     if not path.exists():  # a broken server, not a satellite gap: fail loudly instead of saying "unknown"
         raise HTTPException(503, f"Layer missing at {path}; {missing_hint}")
     with rasterio.open(path) as src:
@@ -97,28 +100,31 @@ def read_plot(path: Path, polygon: Polygon, missing_hint: str):
             if "do not overlap" not in str(e):
                 raise
             raise HTTPException(422, "Plot is outside the covered area.") from e
-        return data, src.descriptions
+        return data, src.descriptions, src.tags()
 
 
 def flood(polygon: Polygon) -> Flood:
     """Flood history under the plot from GFM. Never observed -> unknown, never "not flooded"."""
-    data, names = read_plot(FLOOD_PATH, polygon, "run pipeline/flood_gfm.py")
+    data, names, tags = read_plot(FLOOD_PATH, polygon, "run pipeline/flood_gfm.py")
+    # flood_gfm.py writes the build period with an exclusive end (2025-01-01); report it inclusive.
+    period = dict(period_start=date.fromisoformat(tags["period_start"]),
+                  period_end=date.fromisoformat(tags["period_end"]) - timedelta(days=1))
     n_flooded, n_passes = data[0], data[1]
     seen = ~np.ma.getmaskarray(n_passes) & (n_passes.filled(0) > 0)
     if not seen.any():  # GFM excluded the plot (high ground, city, forest, radar shadow) or never covered it
         return Flood(status="unknown", flood_dates=[], n_passes=0, flooded_fraction=None,
-                     algorithm_version="gfm-ensemble")
+                     algorithm_version="gfm-ensemble", **period)
     dates = sorted({date.fromisoformat(name[:10]) for name, band in zip(names[2:], data[2:])
                     if band.filled(0)[seen].mean() >= FLOOD_DATE_MIN_SHARE})
     return Flood(status="measured", flood_dates=dates,
                  n_passes=int(np.median(n_passes.filled(0)[seen])),
                  flooded_fraction=round(float((n_flooded.filled(0)[seen] > 0).mean()), 3),
-                 algorithm_version="gfm-ensemble")
+                 algorithm_version="gfm-ensemble", **period)
 
 
 def terrain(polygon: Polygon) -> Terrain:
     """Median HAND under the plot. No pixels with data -> unknown, never a guess."""
-    data, _ = read_plot(HAND_PATH, polygon, "run pipeline/hand.py")
+    data, _, _ = read_plot(HAND_PATH, polygon, "run pipeline/hand.py")
     values = data.compressed()
     values = values[~np.isnan(values)]
     if values.size == 0:

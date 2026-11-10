@@ -65,6 +65,7 @@ The JSON `POST /evidence` returns is the contract between backend and frontend. 
 - `flood_dates`: days a pass saw water on at least 5 % of the plot's observed pixels (`FLOOD_DATE_MIN_SHARE` in `api/main.py`). One flood seen by three passes shows up as three dates.
 - `n_passes`: the typical number of passes that observed each pixel of the plot.
 - `algorithm_version`: `gfm-ensemble`.
+- `period_start`, `period_end`: the period the flood history covers, both days inclusive (now 2024-01-01 … 2024-12-31). Read from the tags `flood_gfm.py` writes into `flood_gfm.tif`. Added 10 Nov 2026, agreed by the lead.
 
 Rules:
 - Every layer carries a `status` (`measured` / `unknown`) and how much data sits behind it (`n_passes`, `n_cells`, ...).
@@ -171,7 +172,7 @@ About 20 realistic plots around Galați, mostly non-urban, at three sizes (under
 ## Open decisions
 - **Pilot region:** Galați is provisional and decided by the week-1 data test.
 - **Flood dates in the JSON:** for now `flood_dates` lists the **pass dates** that saw water on the plot (see *The evidence contract*). Grouping passes into region-wide **events** (within about 10 days) is still open; with GFM it would be computed from the per-pass bands already in `flood_gfm.tif`, so no new data is needed.
-- **Period in the JSON:** the flood history currently covers **2024 only**, and the contract has no field that says so, so "flooded 0 times" can't be told apart from "flooded 0 times *in 2024*". Proposal: extend to 2015–2025 (a few hours of reading) and/or add the period to the contract.
+- **Period of the flood history:** 2024 only for now; the answer says so in `period_start`/`period_end`. Extending to 2015–2025 waits until the spring false alarm (see *Verification*) has an answer. Before that, also check how many older passes lack GFM's advisory layer.
 - **Flood compute: Earth Engine or local.** Superseded by the GFM proposal if the lead accepts it; kept for the fallback. Tuning v0.2 used about 27 % of the 150 EECU-h monthly quota; each interactive evaluate run cost about 0.9 EECU-h. A v0.2 10-year batch probably doesn't fit the quota. The prototype `pipeline/flood_local.py` runs the same method locally:
   - **Data:** Copernicus Data Space GRD scenes (free account), processed with ESA SNAP. That's the same chain Earth Engine uses, so the thresholds in `flood.py` are shared.
   - **HAND source:** the local run uses our GLO-30 `hand.tif` instead of MERIT.
