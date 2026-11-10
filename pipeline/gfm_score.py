@@ -18,6 +18,7 @@ so where GFM can't see, n_passes stays 0 ("unknown").
 Contains modified Copernicus Emergency Management Service information.
 """
 import argparse
+import http.client
 import json
 import os
 import sys
@@ -45,10 +46,22 @@ def items(start, end):
         "datetime": f"{start.isoformat()}T00:00:00Z/{end.isoformat()}T00:00:00Z"})
     out = []
     while url:
-        page = json.load(urllib.request.urlopen(url, timeout=120))
+        page = get_json(url)
         out += [f for f in page["features"] if f["properties"]["datetime"] < f"{end.isoformat()}T00:00:00Z"]
         url = next((link["href"] for link in page.get("links", []) if link.get("rel") == "next"), None)
     return out
+
+
+def get_json(url, attempts=5):
+    """A catalogue request, retried: the EODC catalogue is sometimes slow or briefly unreachable."""
+    for attempt in range(1, attempts + 1):
+        try:
+            return json.load(urllib.request.urlopen(url, timeout=120))
+        except (OSError, http.client.HTTPException) as e:  # timeouts, resets, DNS hiccups
+            if attempt == attempts:
+                raise
+            print(f"  catalogue request failed ({str(e)[:60]}), retry {attempt}/{attempts - 1}", flush=True)
+            time.sleep(15 * attempt)
 
 
 def ems_bbox(path):
@@ -96,7 +109,7 @@ def read_asset(item, key):
     except (rasterio.errors.RasterioError, CPLE_BaseError, OSError) as e:
         if "404" not in str(e):
             raise
-        fresh = json.load(urllib.request.urlopen(f"{STAC}/{item['id']}", timeout=120))
+        fresh = get_json(f"{STAC}/{item['id']}")
         if fresh["assets"][key]["href"] == href:
             raise
         item["assets"] = fresh["assets"]

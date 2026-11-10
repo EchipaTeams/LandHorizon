@@ -142,7 +142,7 @@ def download(scene, attempts=6):
                     while chunk := r.read(1 << 22):
                         f.write(chunk)
             if part.stat().st_size == expected:
-                part.rename(path)
+                part.replace(path)
                 return path
             print(f"  {scene['name']}: got {part.stat().st_size} of {expected} bytes, retrying", flush=True)
         except (OSError, http.client.HTTPException) as e:  # URLError, resets and timeouts are OSErrors
@@ -216,7 +216,7 @@ def preprocess(scene, zip_path, keep_raw=False):
                        width=width, height=height, nodata=np.nan, compress="deflate", tiled=True) as dst:
         dst.write(np.stack([bands["VV"], bands["VH"]]))
         dst.descriptions = ("VV", "VH")
-    part.rename(cached)
+    part.replace(cached)
     snap_out.unlink()
     if not keep_raw:
         zip_path.unlink()

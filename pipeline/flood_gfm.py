@@ -47,7 +47,7 @@ def save_checkpoint(path, n_flooded, n_passes, flood_bands, done):
              flood_keys=np.array([k for k, _ in flood_bands]),
              flood_idx=np.concatenate([i for _, i in flood_bands]) if flood_bands else np.array([], "int64"),
              flood_split=np.cumsum(sizes)[:-1] if sizes else np.array([], "int64"))
-    tmp.rename(path)  # only a complete checkpoint gets the real name
+    tmp.replace(path)  # only a complete checkpoint gets the real name; replace (not rename) also works on Windows
 
 
 def main():
