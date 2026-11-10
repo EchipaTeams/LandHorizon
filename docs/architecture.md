@@ -17,7 +17,7 @@ The pipeline turns raw data into COGs **once, ahead of time**, for one pilot reg
 | Layer | Source | Raw data | Processed | Result |
 |---|---|---|---|---|
 | Flood (Sentinel-1, ~10 years) | Earth Engine `COPERNICUS/S1_GRD` | Stays on Google's servers | Inside Earth Engine (`pipeline/flood.py`) | Flood COG(s), exported to Drive |
-| Ground motion (EGMS Ortho) | EGMS Explorer, login, manual download | `data/raw/` | Locally, geopandas + rasterio, rasterized once | `ground.tif` |
+| Ground motion (EGMS Ortho) | EGMS Explorer, login, manual download | `data/raw/` | Locally, from the CSVs (csv + numpy + rasterio), rasterized once (`pipeline/ground.py`) | `ground.tif` |
 | Terrain (HAND) | ASF tiles (Copernicus 30 m DEM), public COGs | Not downloaded: only the AOI window is read over HTTP | Locally, rasterio merge + clip (`pipeline/hand.py`) | `hand.tif` |
 | Validation | Copernicus EMS outlines, PAZ | `data/raw/reference/` | Compared with the flood output | Precision and recall |
 
@@ -87,7 +87,7 @@ LandHorizon/
 ├── pipeline/                    batch jobs, run ahead of time, never while a user waits
 │   ├── flood.py                 Sentinel-1 flood counts in Earth Engine → COG on Drive
 │   ├── hand.py                  HAND for the AOI → data/processed/hand.tif
-│   └── ground.py                (planned) EGMS points → data/processed/ground.tif
+│   └── ground.py                EGMS Ortho U CSVs → data/processed/ground.tif
 ├── web/                         frontend: React + Vite + MapLibre (frontend team)
 │   ├── README.md                what goes here and how to talk to the API
 │   └── src/                     (planned) suggested shape, the frontend team decides
