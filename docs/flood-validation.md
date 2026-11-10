@@ -85,3 +85,95 @@ Unless stated, runs use the summer-2023 baseline, water −18 dB and drop −3 d
   - The leftover false alarms are compact clusters on the north-western farmland, not scattered speckle.
 - **VH helps only a little.** At −24 dB it removes about a sixth of the remaining dry false alarms for 0.5 points of recall.
 - **The margin is thin.** It passes by 0.08 and 0.7 points, after 41 configurations tuned on one event and one dry window. Before the 10-year batch, check it on a second dry window and a second flood event. If either fails, report it; don't retune quietly.
+
+## Local pipeline (flood_local.py), 10 Nov 2026: not finished
+The local prototype downloads scenes from the Copernicus Data Space and processes them with ESA SNAP.
+- **What works:** SNAP processing of real scenes (2 of 34 cached), on the same 10 m grid as the Earth Engine export, with plausible values (VV median −9.4 dB, VH −17.5 dB on the first scene).
+- **Why it stopped:** at about 2 MB/s a full event plus baseline is 6–10 hours of downloading. The run was paused when GFM (below) turned out to be the better option.
+- **Status:** kept as a fallback; no scores yet.
+
+## Copernicus GFM, 10 Nov 2026
+GFM (CEMS Global Flood Monitoring) publishes a flood map for every Sentinel-1 pass, made by an ensemble of three algorithms, plus an exclusion mask and a reference water mask. `pipeline/gfm_score.py` reads it from the EODC STAC catalogue and scores it exactly like our own method:
+- **Same grid:** UTM 35N, 10 m.
+- **Same land definition:** not JRC permanent water above 80 %.
+- **Same windows and references.**
+- **Unknown pixels:** where GFM excludes a pixel or has no data, it doesn't count as a pass, so the pixel stays unknown.
+
+GFM was **not tuned** on any of this data, so unlike v0.2, these are out-of-sample results.
+
+### Galați: the pre-registered criteria
+| | v0.2 (EE) | GFM | Criterion |
+|---|---|---|---|
+| Dry window 12–25 Sept 2023, land flagged ≥1 pass | 0.92 % | **0.09 %** | ≤ 1 % |
+| Sept 2024 vs EMSR758 PRODUCT, recall ≥1 pass | 50.7 % | **58.0 %**, or **54.7 %** counting flood GFM can't see as missed | ≥ 50 % |
+| … precision ≥1 pass | 22.1 % | **27.1 %** | |
+| … precision ≥2 passes | 37.3 % | **72.4 %** | |
+
+- **v0.2's 0.92 % is flattering:** it includes high ground that v0.2's HAND mask could never flag. GFM's 0.09 % counts only land GFM can see, so its real advantage is larger.
+- **GFM's 58.0 % recall is measured on the 817 of 867 ha of EMS flood it can see.**
+
+### What GFM can't see (exclusion mask, 14 Sept 2024 pass)
+42 % of the AOI is excluded, almost all of it high ground:
+
+| HAND | Share of AOI | Excluded |
+|---|---|---|
+| 0–2 m | 56 % | 13 % |
+| 2–5 m | 11 % | 42 % |
+| 5–10 m | 9 % | 62 % |
+| 10–30 m | 16 % | 95 % |
+| 30+ m | 9 % | 99.8 % |
+
+- **The real flood is barely affected:** only 5.8 % of the EMS flood outline is excluded.
+- **The eastern edge** (the Prut wetland around Lacul Manta, plus the Moldovan hills) is about 80 % excluded. That's how GFM avoids the seasonal-lake false alarms v0.2 had there.
+
+### Second event: Botoșani, July 2018 (EMSR293 AOI01)
+- **Reference:** a river flood in the Jijia/Prut basin. The outlines come from **COSMO-SkyMed** images of 2 and 3 July 2018, an independent radar satellite rather than Sentinel-1, so they don't flatter GFM.
+- **Window:** 29 June–12 July 2018, chosen before looking at any result.
+- **Area:** the EMS area of interest.
+- **Passes:** 9 Sentinel-1 passes saw the area; in 2018 there were two Sentinel-1 satellites.
+
+| Reference | EMS flood | Seen by GFM | Precision ≥1 | Recall ≥1 | Recall, unseen = missed |
+|---|---|---|---|---|---|
+| 2 July (PRODUCT) | 314 ha | 98 % | **96.7 %** | 67.6 % | **66.0 %** |
+| 3 July (MONIT01) | 373 ha | 97 % | **99.3 %** | 58.5 % | **56.9 %** |
+
+- **75 % of this area is excluded** (hilly plateau), yet 97–98 % of the flood lies in the part GFM sees.
+- **Precision is far higher than at Galați.** A slow river flood stays in place and is seen by many passes. At Galați, a short flash flood was surrounded by storm-soaked fields.
+
+### Result
+GFM passes both pre-registered criteria with a wide margin and holds on a second, independent event. It beats v0.2 on every number. **Proposed as the flood source; needs the lead's review** (see architecture.md, *Flood method*).
+
+### Advisory flags, and a spring false alarm (10 Nov 2026)
+Building the 2024 history (`flood_gfm.py`) showed 17 % of the seen AOI flagged as flood at least once.
+- **Where it came from:** most of it was **30 Apr and 1 May 2024**, seen by two different orbits. About 15,000 ha were flagged, 77 % of it less than 1 m above the river, mostly in the agricultural polder north of Lake Brateș (lat 45.51–45.62, lon 28.07–28.15).
+- **No flood on record:** there's no recorded flood in Galați County then; the only 2024 events are September's (storm Boris).
+- **Checked with Sentinel-2:** the NDWI image of 29 Apr 2024 (Copernicus Browser) shows **no water** in the polder, only large bare, freshly worked fields. Lake Brateș, the Danube and Lacul Manta all show water as expected. So this was a **false alarm on tilled soil**, a case GFM's user manual lists itself.
+- **What separates it from a real flood:**
+
+| Flagged as flood | 30 Apr 2024 (false) | 21 Sept 2024 (real) |
+|---|---|---|
+| Pixels | 1.49 M | 0.43 M |
+| …with a GFM advisory flag | **40 %** | **0.7 %** |
+| Likelihood (median) | 72 | 73 |
+
+- **Fix:** pixels under an advisory flag now count as **not seen** for that pass, as GFM's manual advises ("use with caution").
+- **Effect on validation:**
+  - dry window 0.09 %, Galați recall 58.0 % / precision 27.1 %, Botoșani 96.7 % / 67.6 % (2 July) and 99.3 % / 58.5 % (3 July)
+  - the advisory layer is missing for 2 of the 31 passes from 2018; those count as having no warnings
+- **What's left:** most of the false alarm carried no advisory flag, so it remains. Removing it would need an optical cross-check (e.g. Sentinel-2 NDWI), which isn't built.
+- **2024 history after the fix:**
+
+| | Before | After |
+|---|---|---|
+| Seen area flagged at least once | 17.05 % | 13.34 % |
+| 30 Apr | 7.63 % | 4.61 % |
+| 1 May | 6.12 % | 5.79 % |
+| 21 Sept (real flood) | 2.20 % | 2.19 % |
+| Median passes per pixel | 92 | 69 |
+
+  The pass count drops because passes under a warning (frost, snow, dry soil) no longer count.
+- **API check on real plots** (`POST /evidence`, ~1 ha squares):
+  - **Inside the Pechea EMS outline:** measured, 99 % flooded, date 21 Sept 2024.
+  - **Polder plot (45.644 N, 28.131 E):** dates went from 11 Apr, 30 Apr, 1 May, 5 May to **11 Apr, 5 May**. Both remaining dates are unverified and probably the same tilled-soil effect.
+  - **Plateau near the Tecuci road:** unknown, `flooded_fraction` null, HAND 13.7 m.
+  - **Danube floodplain south of Galați:** measured, never flooded, 49 passes.
