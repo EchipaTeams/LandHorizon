@@ -3,8 +3,10 @@
 What was run and what came out. The decisions and pass criteria live in [architecture.md](architecture.md#verification). This file only records measurements.
 
 Reference: Copernicus EMS **EMSR758 AOI03 (Pechea)**, Sept 2024 floods. It has two outlines:
-- **PRODUCT v1** (16 Sept): riverine flood, 867 ha
-- **MONIT01 v1** (18 Sept): flash flood, 427 ha
+- **PRODUCT v1** (16 Sept): riverine flood, 867 ha. Mapped from **PAZ** (X-band radar, 15 Sept 2024 15:59 UTC, 3 m).
+- **MONIT01 v1** (18 Sept): flash flood, 427 ha. Mapped from **COSMO-SkyMed Second Generation** (X-band radar, 17 Sept 2024 16:13 UTC, 3 m).
+
+Neither is Sentinel-1 (the pre-event image is Sentinel-2, 24 Aug 2024), so the Galați scores are against independent references and aren't flattered. Sensors as printed on the EMS map PDFs inside the zips.
 
 The files are in `data/raw/reference/`, which is gitignored. All scores are computed only inside the EMS area of interest.
 
@@ -69,7 +71,7 @@ Unless stated, runs use the summer-2023 baseline, water −18 dB and drop −3 d
 - **Closest misses:** E1 fails the dry limit by 0.11 points, and E2 misses recall by 1.1 points. The criteria stay as written, so v0.2 is **not** locked in and the constants stay at v0.1.
 - **Speckle is the main source of false alarms.** A 30 m focal median cuts the dry rate from 11.9 % to 3.5 % for a small loss of recall. The same-season baseline helps only a little and costs recall, so harvested fields are a smaller factor than first assumed.
 - **HAND mostly removes event-window false alarms on high farmland.** It nearly triples precision but barely moves the dry rate, so the remaining dry false alarms lie low in the floodplain.
-- **Precision is stuck around 20–30 %, not the ~50 % the 1 % limit implied.** Inside the EMS area, the event window flags far more non-reference land than the dry window does. Either storm-wet fields count as false alarms against EMS's outline, or the EMS outline (1:25,000, 576 m² minimum mapping unit) is incomplete.
+- **Precision is stuck around 20–30 %, not the ~50 % the 1 % limit implied.** Inside the EMS area, the event window flags far more non-reference land than the dry window does. Either storm-wet fields count as false alarms against EMS's outline, or the EMS outline (1:25,000, 576 m² minimum mapping unit) is incomplete. **Untested hypothesis:** neither explanation has been checked.
 - **Overfitting risk:** every choice was tuned on one event and one dry window. Any final setting needs a second event before it's trusted.
 - **Possible next steps** (team decision):
   - add VH polarisation (better for water vs. bare soil)
@@ -138,7 +140,7 @@ GFM was **not tuned** on any of this data, so unlike v0.2, these are out-of-samp
 | 3 July (MONIT01) | 373 ha | 97 % | **99.3 %** | 58.5 % | **56.9 %** |
 
 - **75 % of this area is excluded** (hilly plateau), yet 97–98 % of the flood lies in the part GFM sees.
-- **Precision is far higher than at Galați.** A slow river flood stays in place and is seen by many passes. At Galați, a short flash flood was surrounded by storm-soaked fields.
+- **Precision is far higher than at Galați.** A slow river flood stays in place and is seen by many passes. Why Galați's precision is only 27 % is **an untested hypothesis**: possibly storm-soaked fields around a short flash flood, or EMS mapping only part of the water. Neither has been checked.
 
 ### Result
 GFM passes both pre-registered criteria with a wide margin and holds on a second, independent event. It beats v0.2 on every number. **Proposed as the flood source; needs the lead's review** (see architecture.md, *Flood method*).
@@ -177,3 +179,60 @@ Building the 2024 history (`flood_gfm.py`) showed 17 % of the seen AOI flagged a
   - **Polder plot (45.644 N, 28.131 E):** dates went from 11 Apr, 30 Apr, 1 May, 5 May to **11 Apr, 5 May**. Both remaining dates are unverified and probably the same tilled-soil effect.
   - **Plateau near the Tecuci road:** unknown, `flooded_fraction` null, HAND 13.7 m.
   - **Danube floodplain south of Galați:** measured, never flooded, 49 passes.
+
+## Review of PR #1, 10 Nov 2026
+
+### Spring no-flood window: fails
+The lead asked for a spring window, because the September one can't catch false alarms on tilled fields. The criterion was committed before the run (`0a80f0c`): **20 Apr–5 May 2024, at most 1 % of land flagged in ≥1 pass.**
+
+| | Land flagged ≥1 pass | ≥2 passes | ≥3 passes |
+|---|---|---|---|
+| Spring window (`gfm_score.py 2024-04-20 2024-05-06`) | **9.06 %** | 2.17 % | 0.32 % |
+| Limit | 1 % | | |
+
+- **Result: it fails.** Almost all of it comes from 30 Apr (7.55 % of what that pass saw) and 1 May (6.36 %).
+- **Other passes in the window:** 23 Apr 0.33 %, 5 May 0.50 %.
+- **Not adjusted:** the method stays as it is. How the report shows flood dates outside a verified event is to be decided with the lead.
+
+### GFM passes without an advisory layer, per year (asked before any 10-year run)
+The fix above treats pixels under a GFM advisory flag as not seen. The lead asked how many older passes don't have the advisory layer at all, because the fix can't apply there.
+
+**Method:**
+- **Scenes:** every GFM scene over the AOI per year, 2015–2025, from the EODC catalogue.
+- **The check:** a request for each scene's `advisory_flags` file.
+- **Moved files:** a missing file was looked up again in the catalogue, in case EODC had moved it.
+- **"Couldn't tell":** the server didn't answer after retries.
+- **Run on:** 10–11 Nov 2026 (one-off script, not in the repo).
+
+| Year | Passes | No advisory layer | Share | Couldn't tell |
+|---|---|---|---|---|
+| 2015 | 388 | 6 | 1.5 % | 0 |
+| 2016 | 683 | 9 | 1.3 % | 2 |
+| 2017 | 1,081 | 13 | 1.2 % | 1 |
+| 2018 | 1,086 | 45 | 4.1 % | 9 |
+| 2019 | 1,094 | 62 | 5.7 % | 6 |
+| 2020 | 1,136 | 34 | 3.0 % | 9 |
+| 2021 | 1,131 | 24 | 2.1 % | 0 |
+| 2022 | 616 | 0 | 0 % | 0 |
+| 2023 | 516 | 0 | 0 % | 0 |
+| 2024 | 630 | 0 | 0 % | 0 |
+| 2025 | 741 | 5 | 0.7 % | 0 |
+| **Total** | **9,102** | **198** | **2.2 %** | **27** |
+
+**Missing doesn't mean empty:**
+- **GFM publishes empty layers:** an advisory file where every pixel is 0 when nothing is flagged (2 of 8 July 2024 scenes checked).
+- **So a missing file was never produced.** The catalogue still lists `advisory_flags` for these scenes; the link just returns 404.
+- **The code is wrong here:** `gfm_score.passes()` treats a missing layer as "no warnings", but the honest reading is "**unknown** whether there were warnings".
+
+**Pattern:**
+- **The older archive (2015–2021):** 1–6 % of passes are missing the layer.
+- **2022–2024:** none are missing.
+- **2025:** a few.
+- **Hint, not proven:** the gaps may come from GFM's reprocessing of its archive. The one scene compared in detail (2 July 2018, Botoșani) was processed separately from its sibling scene. It was also a real flood scene: 14,085 flooded pixels vs 112 on the sibling.
+
+**Consequences:**
+- **The 2024 history isn't affected,** since no 2024 pass lacks the layer.
+- **A 10-year build would hit this in roughly 1 in 20–50 older passes.**
+- **Treating them as "no warnings"** (current) lets any false alarms in them through.
+- **Treating them as "not seen"** is safer, but also drops real observations. At Botoșani it would remove a real flood scene and lower the recall.
+- **Which to use is a method decision for the lead.**

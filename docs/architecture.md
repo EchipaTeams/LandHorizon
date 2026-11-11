@@ -166,7 +166,7 @@ About 20 realistic plots around Galați, mostly non-urban, at three sizes (under
   - Runs and results are logged in [flood-validation.md](flood-validation.md).
   - **10 Nov 2026: passed with v0.2.** The dry rate is 0.92 % and recall is 50.7 %; precision is about 22 %. The margin is thin and comes from 40 configurations tuned on one event, so it is not yet confirmed.
   - **10 Nov 2026: GFM passed the same criteria without any tuning.** Dry rate 0.09 %, recall 54.7 % (counting flood GFM can't see as missed), precision 27 %. A second event, Botoșani July 2018 (EMSR293, outline from COSMO-SkyMed, an independent radar), gave recall 57–66 % and precision 97–99 %.
-- **Flood validation:** compare with PAZ, an independent sensor, and report precision and recall. Checking only against a Sentinel-1-based map would flatter the result.
+- **Flood validation:** compare with outlines from independent sensors and report precision and recall. Checking only against a Sentinel-1-based map would flatter the result. Done for EMSR758 (Galați: PAZ and COSMO-SkyMed SG) and EMSR293 (Botoșani: COSMO-SkyMed); none of them is Sentinel-1.
 - **Fresh clone:** someone outside the team gets it running from the README in 10 minutes.
 
 ## Open decisions
