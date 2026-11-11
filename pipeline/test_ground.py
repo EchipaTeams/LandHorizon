@@ -4,25 +4,34 @@ import rasterio
 
 import ground
 
+HEADER = "pid,easting,northing,mean_velocity,20201209"
 
-def write_csv(raw, points):
+
+def write_tiles(raw, points, tiles=("E56N26", "E57N26")):
+    """The AOI's two EGMS tiles, named as EGMS delivers them; all test points go in E57N26."""
     raw.mkdir()
-    lines = ["pid,easting,northing,mean_velocity,20201209"]
-    lines += [f"p{i},{e},{n},{v},0.0" for i, (e, n, v) in enumerate(points)]
-    (raw / "tile.csv").write_text("\n".join(lines) + "\n")
+    for tile in tiles:
+        rows = [f"p{i},{e},{n},{v},0.0" for i, (e, n, v) in enumerate(points)] if tile == "E57N26" else []
+        (raw / f"EGMS_L3_{tile}_100km_U_2020_2025_1.csv").write_text("\n".join([HEADER, *rows]) + "\n")
 
 
-def test_ground(tmp_path, monkeypatch):
-    # Three neighbouring cells inside the AOI: -3.5 mm/yr, measured 0, and one with no point.
-    write_csv(tmp_path / "egms", [(5701050, 2653950, -3.5), (5701150, 2653950, 0)])
+@pytest.fixture
+def paths(tmp_path, monkeypatch):
     monkeypatch.setattr(ground, "RAW", tmp_path / "egms")
     monkeypatch.setattr(ground, "OUT", tmp_path / "ground.tif")
+    return tmp_path / "egms", tmp_path / "ground.tif"
+
+
+def test_ground(paths):
+    raw, out = paths
+    # Three neighbouring cells inside the AOI: -3.5 mm/yr, measured 0, and one with no point.
+    write_tiles(raw, [(5701050, 2653950, -3.5), (5701150, 2653950, 0)])
     ground.main()
 
-    with rasterio.open(tmp_path / "ground.tif") as src:
+    with rasterio.open(out) as src:
         band = src.read(1)
         assert src.crs.to_epsg() == 3035
-        assert src.tags()["RELEASE"] == ground.RELEASE
+        assert src.tags()["RELEASE"] == "2020-2025"  # read from the file names
         moving = band[src.index(5701050, 2653950)]
         still = band[src.index(5701150, 2653950)]
         empty = band[src.index(5701250, 2653950)]
@@ -33,32 +42,17 @@ def test_ground(tmp_path, monkeypatch):
     assert np.isfinite(band).sum() == 2
 
 
-def test_off_grid_point_stops(tmp_path, monkeypatch):
-    write_csv(tmp_path / "egms", [(5701000, 2653950, -3.5)])  # a cell edge, not a centre
-    monkeypatch.setattr(ground, "RAW", tmp_path / "egms")
-    monkeypatch.setattr(ground, "OUT", tmp_path / "ground.tif")
+def test_missing_tile_stops(paths):
+    raw, out = paths
+    write_tiles(raw, [(5701050, 2653950, -3.5)], tiles=("E57N26",))  # E56N26 not downloaded
+    with pytest.raises(SystemExit, match=r"missing EGMS tiles for the AOI: \['E56N26'\]"):
+        ground.main()
+    assert not out.exists()
+
+
+def test_off_grid_point_stops(paths):
+    raw, out = paths
+    write_tiles(raw, [(5701000, 2653950, -3.5)])  # a cell edge, not a centre
     with pytest.raises(SystemExit, match="not on the 100 m EGMS grid"):
         ground.main()
-    assert not (tmp_path / "ground.tif").exists()
-
-
-BOUNDS = (5700000, 2650000, 5710000, 2660000)  # an EPSG:3035 box around the test cells
-
-
-def test_blank_lines_are_skipped(tmp_path):
-    path = tmp_path / "tile.csv"
-    path.write_text("easting,northing,mean_velocity\n\n5701050,2653950,-3.5\n\n")
-    assert ground.read_points(path, BOUNDS) == [(5701050, 2653950, -3.5)]
-
-
-def test_bom_before_header(tmp_path):
-    path = tmp_path / "tile.csv"
-    path.write_text("﻿easting,northing,mean_velocity\n5701050,2653950,-3.5\n", encoding="utf-8")
-    assert ground.read_points(path, BOUNDS) == [(5701050, 2653950, -3.5)]
-
-
-def test_empty_file_stops(tmp_path):
-    path = tmp_path / "tile.csv"
-    path.write_text("")
-    with pytest.raises(SystemExit, match="empty file"):
-        ground.read_points(path, BOUNDS)
+    assert not out.exists()

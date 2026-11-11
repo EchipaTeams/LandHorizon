@@ -1,29 +1,33 @@
 """Ground motion: EGMS Ortho vertical (U) velocity for the AOI, as a local COG.
 
-EGMS needs a login, so the 100 km tiles are downloaded by hand from EGMS Explorer
-and unzipped flat into data/raw/egms/. This reads their CSVs (not the TIFFs: the
-E57N26 TIFF is shifted one cell) and writes data/processed/ground.tif:
-mean_velocity in mm/yr on the EGMS 100 m grid, NaN where EGMS has no cell.
+EGMS needs a login, so download the Ortho 'U' tiles covering the AOI by hand from
+EGMS Explorer and unzip them flat into data/raw/egms/ (the AOI spans two 100 km
+tiles, E56N26 and E57N26). This reads their CSVs, not the TIFFs: the E57N26 TIFF
+is shifted one cell. It writes data/processed/ground.tif: mean_velocity in mm/yr
+on the EGMS 100 m grid, NaN where EGMS has no cell.
 
   uv run python pipeline/ground.py
 """
 import csv
 import math
+import re
 import sys
 from pathlib import Path
 
 import numpy as np
 import rasterio
 from rasterio.transform import from_origin
-from rasterio.warp import transform, transform_bounds
+from rasterio.warp import transform_bounds
 
 from flood import AOI
 
-RELEASE = "2020-2025"  # EGMS release the tiles come from; stored as a tag in the TIFF
-CRS, CELL = "EPSG:3035", 100  # EGMS Ortho grid: ETRS89-LAEA, 100 m cells centred on ...50 m
+# EGMS Ortho grid: ETRS89-LAEA, 100 m cells centred on ...50 m, in 100 km tiles.
+CRS, CELL, TILE = "EPSG:3035", 100, 100_000
 ROOT = Path(__file__).resolve().parents[1]
 RAW = ROOT / "data" / "raw" / "egms"
 OUT = ROOT / "data" / "processed" / "ground.tif"
+# e.g. EGMS_L3_E57N26_100km_U_2020_2025_1.csv -> tile E57N26, release 2020-2025
+NAME = re.compile(r"EGMS_L3_(E\d+N\d+)_100km_U_(\d{4})_(\d{4})_\d+\.csv")
 
 
 def read_points(path, bounds):
@@ -33,18 +37,14 @@ def read_points(path, bounds):
     """
     x0, y0, x1, y1 = bounds
     points = []
-    with open(path, newline="", encoding="utf-8-sig") as f:  # -sig: tolerate a BOM before the header
+    with open(path, newline="") as f:
         rows = csv.reader(f)
-        header = next(rows, None)
-        if header is None:
-            sys.exit(f"{path.name}: empty file; re-download or remove it")
+        header = next(rows)
         try:
             ie, i_n, iv = (header.index(c) for c in ("easting", "northing", "mean_velocity"))
         except ValueError:
             sys.exit(f"{path.name}: missing easting/northing/mean_velocity column")
         for line, row in enumerate(rows, start=2):
-            if not row:  # blank line, e.g. at the end of the file
-                continue
             e, n = float(row[ie]), float(row[i_n])
             if e % CELL != CELL / 2 or n % CELL != CELL / 2:
                 sys.exit(f"{path.name} line {line}: point ({e}, {n}) is not on the {CELL} m EGMS grid "
@@ -55,43 +55,48 @@ def read_points(path, bounds):
 
 
 def main():
-    csvs = sorted(RAW.glob("*.csv"))
-    if not csvs:
-        sys.exit(f"no CSVs in {RAW}: download EGMS Ortho U tiles from EGMS Explorer and unzip them there")
-
     # Grid: the AOI's bounding box in EPSG:3035, snapped outward to EGMS cell edges (multiples of 100 m).
     bx0, by0, bx1, by1 = transform_bounds("EPSG:4326", CRS, *AOI, densify_pts=21)
     x0, y0 = math.floor(bx0 / CELL) * CELL, math.floor(by0 / CELL) * CELL
     x1, y1 = math.ceil(bx1 / CELL) * CELL, math.ceil(by1 / CELL) * CELL
     width, height = (x1 - x0) // CELL, (y1 - y0) // CELL
 
-    points = [p for path in csvs for p in read_points(path, (x0, y0, x1, y1))]
-    e, n, v = np.array(points, dtype="float64").reshape(-1, 3).T
-    # The AOI is a lon/lat box, so its 3035 bounding box has extra corners: keep only centres inside the AOI.
-    lon, lat = transform(CRS, "EPSG:4326", e, n)
-    lon, lat = np.array(lon), np.array(lat)
-    inside = (lon >= AOI[0]) & (lon <= AOI[2]) & (lat >= AOI[1]) & (lat <= AOI[3])
-    e, n, v = e[inside], n[inside], v[inside]
-    if e.size == 0:
-        sys.exit(f"no EGMS cells inside AOI {AOI}: do the tiles in {RAW} cover it?")
+    # A tile is named by its lower-left corner in 100 km units: E57N26 = x 5,700,000 / y 2,600,000.
+    # A tile left out would silently turn into "unknown", so insist on all of them.
+    need = {f"E{ix}N{iy}" for ix in range(x0 // TILE, (x1 - 1) // TILE + 1)
+            for iy in range(y0 // TILE, (y1 - 1) // TILE + 1)}
+    tiles = {}
+    for path in sorted(RAW.glob("*.csv")):
+        if m := NAME.fullmatch(path.name):
+            if m[1] in tiles:
+                sys.exit(f"two CSVs for tile {m[1]} in {RAW}: keep one")
+            tiles[m[1]] = (path, f"{m[2]}-{m[3]}")
+    if missing := need - tiles.keys():
+        sys.exit(f"missing EGMS tiles for the AOI: {sorted(missing)}. "
+                 f"Download the Ortho U tiles from EGMS Explorer and unzip them into {RAW}")
+    if len(releases := {tiles[t][1] for t in need}) != 1:
+        sys.exit(f"tiles come from different EGMS releases: {sorted(releases)}")
+    release = releases.pop()
 
-    cols = ((e - x0) // CELL).astype(int)
-    rows = ((y1 - n) // CELL).astype(int)
-    if len(set(zip(rows, cols))) != e.size:
-        sys.exit(f"some cells appear in more than one CSV: remove duplicate tiles from {RAW}")
+    points = [p for t in sorted(need) for p in read_points(tiles[t][0], (x0, y0, x1, y1))]
+    if not points:
+        sys.exit(f"no EGMS cells inside AOI {AOI}: check the tiles in {RAW}")
+    e, n, v = np.array(points).T
     band = np.full((height, width), np.nan, dtype="float32")  # no cell stays NaN (unknown), never 0
-    band[rows, cols] = v
+    band[((y1 - n) // CELL).astype(int), ((e - x0) // CELL).astype(int)] = v
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     with rasterio.open(OUT, "w", driver="COG", dtype="float32", count=1, crs=CRS,
                        width=width, height=height, transform=from_origin(x0, y1, CELL, CELL),
                        nodata=float("nan"), compress="deflate") as dst:
         dst.write(band, 1)
-        dst.update_tags(RELEASE=RELEASE, UNITS="mm/yr", SOURCE="EGMS Ortho L3 U mean_velocity")
+        dst.update_tags(RELEASE=release, UNITS="mm/yr", SOURCE="EGMS Ortho L3 U mean_velocity")
 
-    print(f"wrote {OUT} ({width}x{height} px, {CELL} m) from {len(csvs)} CSVs, release {RELEASE}; "
-          f"{e.size} cells in AOI; velocity mm/yr: min {np.nanmin(band):.1f}, "
-          f"median {np.nanmedian(band):.1f}, max {np.nanmax(band):.1f}, NaN {np.isnan(band).mean():.1%}")
+    print(f"wrote {OUT} ({width}x{height} px, {CELL} m) from tiles {sorted(need)}, release {release}; "
+          f"{v.size} cells have data ({v.size / band.size:.1%}); velocity mm/yr: "
+          f"min {v.min():.1f}, median {np.median(v):.1f}, max {v.max():.1f}")
+    if np.abs(v).max() > 100:
+        print("WARNING: |velocity| above 100 mm/yr is rare; check the units of the product.")
 
 
 if __name__ == "__main__":
