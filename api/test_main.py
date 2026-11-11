@@ -57,7 +57,7 @@ def test_terrain(layers, monkeypatch):
 
 def test_flood(layers, monkeypatch):
     measured = client.post("/evidence", json=LEFT).json()["flood"]
-    assert measured == {"status": "measured", "flood_dates": ["2024-09-14"], "n_passes": 3,
+    assert measured == {"status": "measured", "observed_fraction": 1.0, "flood_dates": ["2024-09-14"], "n_passes": 3,
                         "flooded_fraction": 1.0, "algorithm_version": "gfm-ensemble",
                         "period_start": "2024-01-01", "period_end": "2024-12-31"}  # end reported inclusive
 
@@ -71,9 +71,17 @@ def test_flood(layers, monkeypatch):
 
     # The unknown rule: a plot no pass could see is "unknown" with no fraction, never "0 % flooded".
     unseen = client.post("/evidence", json=RIGHT).json()["flood"]
-    assert unseen == {"status": "unknown", "flood_dates": [], "n_passes": 0,
+    assert unseen == {"status": "unknown", "observed_fraction": 0.0, "flood_dates": [], "n_passes": 0,
                       "flooded_fraction": None, "algorithm_version": "gfm-ensemble",
                       "period_start": "2024-01-01", "period_end": "2024-12-31"}  # the period is known even here
+
+    # A barely observed plot is unknown too. 3x3 px plots across the seen/unseen edge (columns 0-4 are seen):
+    mostly = client.post("/evidence", json=square(28.0032, 45.4012, d=0.0026)).json()["flood"]  # 2 of 3 columns seen
+    assert (mostly["status"], mostly["observed_fraction"], mostly["flooded_fraction"]) == ("measured", 0.667, 1.0)
+    barely = client.post("/evidence", json=square(28.0042, 45.4012, d=0.0026)).json()["flood"]  # 1 of 3 columns seen
+    assert barely == {"status": "unknown", "observed_fraction": 0.333, "flood_dates": [], "n_passes": 3,
+                      "flooded_fraction": None, "algorithm_version": "gfm-ensemble",  # flooded where seen, still unknown
+                      "period_start": "2024-01-01", "period_end": "2024-12-31"}
 
     monkeypatch.setattr(main, "FLOOD_PATH", layers / "missing.tif")
     assert client.post("/evidence", json=LEFT).status_code == 503

@@ -145,6 +145,8 @@ GFM was **not tuned** on any of this data, so unlike v0.2, these are out-of-samp
 ### Result
 GFM passes both pre-registered criteria with a wide margin and holds on a second, independent event. It beats v0.2 on every number. **Proposed as the flood source; needs the lead's review** (see architecture.md, *Flood method*).
 
+*Added 11 Nov 2026:* the lead accepted it as the flood source for now. A third criterion added later, the spring window, fails: see *Review of PR #1* below.
+
 ### Advisory flags, and a spring false alarm (10 Nov 2026)
 Building the 2024 history (`flood_gfm.py`) showed 17 % of the seen AOI flagged as flood at least once.
 - **Where it came from:** most of it was **30 Apr and 1 May 2024**, seen by two different orbits. About 15,000 ha were flagged, 77 % of it less than 1 m above the river, mostly in the agricultural polder north of Lake Brateș (lat 45.51–45.62, lon 28.07–28.15).
