@@ -2,7 +2,7 @@
 
 Downloads GRD scenes from the Copernicus Data Space Ecosystem (free account), runs ESA SNAP
 on each (pipeline/s1_preprocess.xml: the same chain as Earth Engine's COPERNICUS/S1_GRD), keeps
-only the AOI as a small per-pass cache, then applies flood.py's method and thresholds in numpy.
+only the AOI as a small per-pass cache, then applies flood_earthengine.py's method and thresholds in numpy.
 
   set -a; source .env; set +a      # CDSE_USER / CDSE_PASSWORD (dataspace.copernicus.eu)
   uv run python pipeline/flood_local.py --event 2024-09-12 2024-09-25
@@ -11,13 +11,12 @@ only the AOI as a small per-pass cache, then applies flood.py's method and thres
       --reference data/raw/reference/EMSR758_AOI03_DEL_PRODUCT_v1.zip                     # vs Copernicus EMS
 
 Output: data/processed/flood_<start>_<end>_v<version>-local.tif, bands n_flooded, n_passes,
-on the same grid as flood.py's export. Passes already in data/raw/s1/aoi/ are never re-downloaded,
+on the same grid as flood_earthengine.py's export. Passes already in data/raw/s1/aoi/ are never re-downloaded,
 so reruns and tuning cost nothing. SNAP: set SNAP_GPT if gpt isn't at ~/esa-snap/bin/gpt.
 """
 import argparse
 import http.client
 import json
-import math
 import os
 import queue
 import re
@@ -27,60 +26,26 @@ import threading
 import time
 import urllib.parse
 import urllib.request
-import zipfile
 from collections import defaultdict
 from datetime import date
 from pathlib import Path
 
 import numpy as np
 import rasterio
-from rasterio.features import rasterize
-from rasterio.transform import from_origin
-from rasterio.warp import Resampling, reproject, transform_bounds, transform_geom
 from scipy.ndimage import median_filter
 
-from flood import (AOI, ALGORITHM_VERSION, BASELINE, CRS, DROP_DB, HAND_MAX_M, PERMANENT_WATER, SCALE,
-                   SPECKLE_M, VH_WATER_DB, VV_WATER_DB)
+from flood_common import CRS, OUT, ROOT, SCALE, aoi_wkt, grid, masks, report, to_grid, write_counts
+from flood_earthengine import (ALGORITHM_VERSION, BASELINE, DROP_DB, HAND_MAX_M, PERMANENT_WATER, SPECKLE_M,
+                               VH_WATER_DB, VV_WATER_DB)
 
-ROOT = Path(__file__).resolve().parents[1]
 RAW = ROOT / "data" / "raw" / "s1"   # downloaded zips (deleted after SNAP unless --keep-raw)
 CACHE = RAW / "aoi"                  # one small GeoTIFF per scene: VV, VH in dB on the AOI grid
-OUT = ROOT / "data" / "processed"
-HAND = OUT / "hand.tif"              # from pipeline/hand.py (GLO-30); stands in for Earth Engine's MERIT HAND
 GRAPH = Path(__file__).with_name("s1_preprocess.xml")
 GPT = os.environ.get("SNAP_GPT", str(Path.home() / "esa-snap" / "bin" / "gpt"))
 
 CATALOGUE = "https://catalogue.dataspace.copernicus.eu/odata/v1/Products"
 TOKEN_URL = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
 DOWNLOAD = "https://zipper.dataspace.copernicus.eu/odata/v1/Products({})/$value"
-# ponytail: the one 10°x10° JRC tile covering 20–30°E, 40–50°N, which holds the Galați AOI.
-JRC = "https://storage.googleapis.com/global-surface-water/downloads2021/occurrence/occurrence_20E_50Nv1_4_2021.tif"
-
-def set_area(bbox):
-    """Work on another area (lon_min, lat_min, lon_max, lat_max), e.g. a second validation event.
-    The default is flood.py's AOI. The grid stays UTM 35N, so the area must lie within 24–30°E."""
-    global AOI, AOI_WKT
-    lon0, lat0, lon1, lat1 = AOI = list(bbox)
-    AOI_WKT = f"POLYGON(({lon0} {lat0},{lon1} {lat0},{lon1} {lat1},{lon0} {lat1},{lon0} {lat0}))"
-
-
-set_area(AOI)
-
-
-def grid():
-    """The fixed output grid: the AOI in UTM 35N, snapped to 10 m, like flood.py's export."""
-    x0, y0, x1, y1 = transform_bounds("EPSG:4326", CRS, *AOI)
-    x0, y1 = math.floor(x0 / SCALE) * SCALE, math.ceil(y1 / SCALE) * SCALE
-    return from_origin(x0, y1, SCALE, SCALE), math.ceil((x1 - x0) / SCALE), math.ceil((y1 - y0) / SCALE)
-
-
-def to_grid(src, band=1, resampling=Resampling.nearest):
-    """One band of an open raster, warped onto the AOI grid as float32 with NaN for no data."""
-    transform, width, height = grid()
-    dst = np.full((height, width), np.nan, dtype="float32")
-    reproject(rasterio.band(src, band), dst, dst_transform=transform, dst_crs=CRS,
-              src_nodata=src.nodata, dst_nodata=np.nan, resampling=resampling)
-    return dst
 
 
 # --- Copernicus Data Space: find and download scenes ------------------------------------------
@@ -88,7 +53,7 @@ def to_grid(src, band=1, resampling=Resampling.nearest):
 def search(start, end):
     """IW GRD scenes over the AOI in [start, end), as dicts with id, name, date, orbit."""
     flt = (f"Collection/Name eq 'SENTINEL-1' and contains(Name,'IW_GRDH') "
-           f"and OData.CSC.Intersects(area=geography'SRID=4326;{AOI_WKT}') "
+           f"and OData.CSC.Intersects(area=geography'SRID=4326;{aoi_wkt()}') "
            f"and ContentDate/Start ge {start.isoformat()}T00:00:00.000Z "
            f"and ContentDate/Start lt {end.isoformat()}T00:00:00.000Z")
     url = CATALOGUE + "?" + urllib.parse.urlencode(
@@ -199,7 +164,7 @@ def preprocess(scene, zip_path, keep_raw=False):
     """Run SNAP on a downloaded scene and cache its AOI crop (bands VV, VH in dB on the AOI grid)."""
     cached = cache_path(scene)
     snap_out = RAW / f"{scene['name']}_snap.tif"
-    subprocess.run([GPT, str(GRAPH), f"-Pinput={zip_path}", f"-Poutput={snap_out}", f"-Paoi={AOI_WKT}",
+    subprocess.run([GPT, str(GRAPH), f"-Pinput={zip_path}", f"-Poutput={snap_out}", f"-Paoi={aoi_wkt()}",
                     "-q", str(os.cpu_count())], check=True, stdout=subprocess.DEVNULL)
 
     with rasterio.open(snap_out) as src:
@@ -306,60 +271,6 @@ def flood_counts(event, baseline, can_flood, water_db=VV_WATER_DB, drop_db=DROP_
     return n_flooded, n_passes
 
 
-def scores(n_flooded, n_passes, permanent, ref=None, ref_aoi=None):
-    """Share of land flagged at >=1/2/3 passes; with a reference, precision and recall inside ref_aoi."""
-    land = (n_passes > 0) & ~permanent
-    out = {"share": {k: float((n_flooded[land] >= k).mean()) if land.any() else float("nan") for k in (1, 2, 3)}}
-    if ref is not None:
-        valid = ref_aoi & (n_passes > 0)
-        truth = ref & valid
-        out["ref_px"] = int(truth.sum())
-        for k in (1, 2, 3):
-            pred = (n_flooded >= k) & valid
-            tp = int((pred & truth).sum())
-            out[k] = {"pred_px": int(pred.sum()), "precision": tp / pred.sum() if pred.any() else float("nan"),
-                      "recall": tp / truth.sum() if truth.any() else float("nan")}
-    return out
-
-
-# --- Inputs that aren't Sentinel-1 -------------------------------------------------------------
-
-def masks(hand_max_m, permanent_water=PERMANENT_WATER):
-    """(permanent water, can flood) on the AOI grid, from JRC occurrence and our HAND layer."""
-    with rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR"), rasterio.open(JRC) as src:
-        occurrence = np.nan_to_num(to_grid(src), nan=0)  # like EE's unmask(0)
-    hand = None
-    if hand_max_m is not None:
-        if not HAND.exists():
-            sys.exit(f"HAND layer missing at {HAND}; run pipeline/hand.py")
-        with rasterio.open(HAND) as src:
-            hand = np.nan_to_num(to_grid(src, resampling=Resampling.bilinear), nan=0)  # like EE's unmask(0)
-    return water_masks(occurrence, hand, permanent_water, hand_max_m)
-
-
-def water_masks(occurrence, hand, permanent_water, hand_max_m):
-    """Permanent water = JRC occurrence (% of time water, 1984-2021) above the threshold.
-    It's never flood and isn't counted as land in the false-alarm rate. Can flood = not
-    permanent water and, if hand_max_m is set, at most that high above drainage."""
-    permanent = occurrence > permanent_water
-    can_flood = ~permanent
-    if hand_max_m is not None:
-        can_flood &= hand <= hand_max_m
-    return permanent, can_flood
-
-
-def ems(path):
-    """(flooded, area of interest) of a Copernicus EMS delineation zip, rasterized on the AOI grid."""
-    transform, width, height = grid()
-    out = []
-    with zipfile.ZipFile(path) as zf:
-        for suffix in ("observedEventA", "areaOfInterestA"):
-            name = next(n for n in zf.namelist() if n.endswith(f"{suffix}_v1.json"))
-            geoms = [transform_geom("EPSG:4326", CRS, f["geometry"]) for f in json.loads(zf.read(name))["features"]]
-            out.append(rasterize(geoms, out_shape=(height, width), transform=transform).astype(bool))
-    return tuple(out)
-
-
 def run(window, baseline_window, keep_raw, **params):
     hand_max_m, permanent_water = params.pop("hand_max_m"), params.pop("permanent_water")
     event_scenes = search(*window)
@@ -386,7 +297,7 @@ def main():
     p.add_argument("--baseline", nargs=2, type=date.fromisoformat, metavar=("START", "END"), default=BASELINE)
     p.add_argument("--reference", help="Copernicus EMS delineation zip to score against (--evaluate only)")
     p.add_argument("--keep-raw", action="store_true", help="keep downloaded zips (about 1.7 GB each)")
-    tune = p.add_argument_group("tuning overrides (--evaluate only; defaults are flood.py's constants)")
+    tune = p.add_argument_group("tuning overrides (--evaluate only; defaults are flood_earthengine.py's constants)")
     tune.add_argument("--water-db", type=float, default=VV_WATER_DB)
     tune.add_argument("--drop-db", type=float, default=DROP_DB)
     tune.add_argument("--speckle-m", type=float, default=SPECKLE_M)
@@ -416,29 +327,6 @@ def main():
         report(n_flooded, n_passes, permanent, a.reference)
         return
     write_counts(OUT / f"flood_{start}_{end}_v{ALGORITHM_VERSION.replace('.', '-')}-local.tif", n_flooded, n_passes)
-
-
-def report(n_flooded, n_passes, permanent, reference=None):
-    """Print the dry-date share and, with an EMS zip, precision and recall (same format as flood.py --evaluate)."""
-    ref, ref_aoi = ems(reference) if reference else (None, None)
-    s = scores(n_flooded, n_passes, permanent, ref, ref_aoi)
-    print("land flagged flooded:  " + "  ".join(f">={k} pass: {s['share'][k]:6.2%}" for k in (1, 2, 3)))
-    if ref is not None:
-        print(f"reference {os.path.basename(reference)}: {s['ref_px'] / 100:.0f} ha flooded")
-        for k in (1, 2, 3):
-            print(f"  flooded in >= {k} pass(es): predicted {s[k]['pred_px'] / 100:8.0f} ha  "
-                  f"precision {s[k]['precision']:6.1%}  recall {s[k]['recall']:6.1%}")
-
-
-def write_counts(out, n_flooded, n_passes):
-    """The n_flooded / n_passes COG on the AOI grid, the same format as flood.py's export."""
-    transform, width, height = grid()
-    out.parent.mkdir(parents=True, exist_ok=True)
-    with rasterio.open(out, "w", driver="COG", dtype="uint16", count=2, crs=CRS, transform=transform,
-                       width=width, height=height, compress="deflate") as dst:
-        dst.write(np.stack([n_flooded, n_passes]))
-        dst.descriptions = ("n_flooded", "n_passes")
-    print(f"wrote {out}")
 
 
 if __name__ == "__main__":

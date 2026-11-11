@@ -24,7 +24,7 @@ import numpy as np
 import rasterio
 from rasterio.shutil import copy as rio_copy
 
-from flood_local import CRS, OUT, grid
+from flood_common import CRS, OUT, grid
 from gfm_score import items, passes
 
 PATH = OUT / "flood_gfm.tif"

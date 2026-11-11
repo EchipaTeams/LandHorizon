@@ -34,7 +34,7 @@ Fallback flood pipelines (our own method; see [docs/architecture.md](docs/archit
 ```
 uv run earthengine authenticate
 export GEE_PROJECT=<cloud-project-id>          # PowerShell: $env:GEE_PROJECT = "<cloud-project-id>"
-uv run python pipeline/flood.py --orbits 2024-09-01 2024-10-01
+uv run python pipeline/flood_earthengine.py --orbits 2024-09-01 2024-10-01
 ```
 
 Local flood pipeline (prototype, no Earth Engine). It needs [ESA SNAP](https://step.esa.int/main/download/snap-download/) and a free [Copernicus Data Space](https://dataspace.copernicus.eu) account. Each scene downloads about 1.7 GB, which is deleted after processing; the first event run fetches about 34 scenes.

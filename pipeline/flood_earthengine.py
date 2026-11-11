@@ -5,10 +5,10 @@ map one event, export the result to Google Drive as a COG.
 
   earthengine authenticate                      # once per machine
   $env:GEE_PROJECT = "<cloud-project-id>"       # PowerShell
-  uv run python pipeline/flood.py --orbits 2024-09-01 2024-10-01
-  uv run python pipeline/flood.py --event 2024-09-12 2024-09-25
-  uv run python pipeline/flood.py --evaluate 2023-09-12 2023-09-25            # dry-date test
-  uv run python pipeline/flood.py --evaluate 2024-09-12 2024-09-25 \\
+  uv run python pipeline/flood_earthengine.py --orbits 2024-09-01 2024-10-01
+  uv run python pipeline/flood_earthengine.py --event 2024-09-12 2024-09-25
+  uv run python pipeline/flood_earthengine.py --evaluate 2023-09-12 2023-09-25            # dry-date test
+  uv run python pipeline/flood_earthengine.py --evaluate 2024-09-12 2024-09-25 \\
       --reference data/raw/reference/EMSR758_AOI03_DEL_PRODUCT_v1.zip        # vs Copernicus EMS
 
 Output bands: n_flooded (passes that saw water), n_passes (all passes).
@@ -24,6 +24,8 @@ from datetime import date
 
 import ee
 
+from flood_common import AOI, CRS, SCALE  # the area and grid every flood script shares
+
 ALGORITHM_VERSION = "0.2"
 # Tuned 10 Nov 2026 against the dry-date test; runs and results in docs/flood-validation.md.
 VV_WATER_DB = -18     # flooded pixel is darker than this...
@@ -33,9 +35,6 @@ SPECKLE_M = 30        # focal median radius applied to each pass before threshol
 HAND_MAX_M = 10       # if set, only pixels at most this high above drainage (MERIT Hydro) can flood
 VH_WATER_DB = -24     # if set, a flooded pixel must also be darker than this in VH (cross-polarised)
 
-# Provisional AOI around Galați (lon_min, lat_min, lon_max, lat_max); region locks on 15 Nov.
-AOI = [27.5, 45.35, 28.25, 45.85]
-CRS, SCALE = "EPSG:32635", 10  # UTM 35N, metres
 # Dry window for the baseline. It must not overlap the event, or the flood darkens its own baseline.
 BASELINE = (date(2023, 6, 1), date(2023, 9, 1))
 

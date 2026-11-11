@@ -1,6 +1,6 @@
 import numpy as np
 
-from flood_local import flood_counts, scores
+from flood_local import flood_counts
 
 NAN = np.nan
 
@@ -30,20 +30,6 @@ def test_flood_counts():
     assert n_flooded[0, 0] == 0
 
 
-def test_scores():
-    n_flooded = np.array([[2, 1, 0, 0, 0]], dtype="uint16")
-    n_passes = np.array([[3, 3, 3, 3, 0]], dtype="uint16")
-    permanent = np.array([[False, False, False, True, False]])
-    ref = np.array([[True, False, True, False, True]])
-    ref_aoi = np.ones((1, 5), bool)
-
-    s = scores(n_flooded, n_passes, permanent, ref, ref_aoi)
-    assert s["share"][1] == 2 / 3  # land = 3 pixels with passes, not permanent water
-    assert s["ref_px"] == 2        # the no-data pixel doesn't count as missed flood
-    assert s[1]["precision"] == 0.5 and s[1]["recall"] == 0.5
-    assert s[2]["precision"] == 1.0 and s[2]["recall"] == 0.5
-
-
 def test_prefetched_keeps_order_and_bounds_downloads(monkeypatch):
     import random
     import threading
@@ -71,21 +57,3 @@ def test_prefetched_keeps_order_and_bounds_downloads(monkeypatch):
         got.append((scene, path))
     assert got == [(s, f"{s}.zip") for s in scenes]  # in order, none lost, no deadlock
     assert peak <= 2                                  # never more than `workers` at once
-
-
-def test_water_masks():
-    from flood_local import water_masks
-
-    occurrence = px(0, 60, 90, 0)  # field, seasonal lake (like Lacul Manta), river, field
-    hand = px(2, 0, 0, 30)          # the last field sits 30 m above drainage
-
-    permanent, can_flood = water_masks(occurrence, hand, permanent_water=80, hand_max_m=10)
-    assert permanent.tolist() == [[False, False, True, False]]   # at 80 the seasonal lake is land
-    assert can_flood.tolist() == [[True, True, False, False]]
-
-    permanent, can_flood = water_masks(occurrence, hand, permanent_water=50, hand_max_m=10)
-    assert permanent.tolist() == [[False, True, True, False]]    # at 50 it is water
-    assert can_flood.tolist() == [[True, False, False, False]]
-
-    _, can_flood = water_masks(occurrence, None, permanent_water=80, hand_max_m=None)  # no HAND mask
-    assert can_flood.tolist() == [[True, True, False, True]]

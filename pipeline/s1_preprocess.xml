@@ -1,5 +1,5 @@
 <!-- Sentinel-1 GRD -> sigma0 in dB, terrain corrected, cropped to the AOI.
-     The same chain Earth Engine uses for COPERNICUS/S1_GRD, so flood.py's thresholds carry over.
+     The same chain Earth Engine uses for COPERNICUS/S1_GRD, so flood_earthengine.py's thresholds carry over.
      Run by pipeline/flood_local.py:  gpt s1_preprocess.xml -Pinput=... -Poutput=... -Paoi="POLYGON(...)" -->
 <graph id="s1_preprocess">
   <version>1.0</version>
