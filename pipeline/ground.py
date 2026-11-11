@@ -41,14 +41,20 @@ def read_points(path, bounds):
         rows = csv.reader(f)
         header = next(rows)
         try:
+            #the script stores ie=0, i_n=1, iv=2
             ie, i_n, iv = (header.index(c) for c in ("easting", "northing", "mean_velocity"))
         except ValueError:
+            #this happens in case the csv file has a missing column
             sys.exit(f"{path.name}: missing easting/northing/mean_velocity column")
         for line, row in enumerate(rows, start=2):
+            #we start with the second line because the header is the first
             e, n = float(row[ie]), float(row[i_n])
+            #the EGMS grid uses 100 m cells whose centers end in 50 meters
+            #this checks the condition
             if e % CELL != CELL / 2 or n % CELL != CELL / 2:
                 sys.exit(f"{path.name} line {line}: point ({e}, {n}) is not on the {CELL} m EGMS grid "
                          f"(centres end in {CELL // 2}); is this an EGMS Ortho L3 file?")
+            #if our point is in bounds and mean_velocity has a value, we store it
             if x0 < e < x1 and y0 < n < y1 and row[iv] != "":
                 points.append((e, n, float(row[iv])))
     return points
@@ -59,12 +65,14 @@ def main():
     bx0, by0, bx1, by1 = transform_bounds("EPSG:4326", CRS, *AOI, densify_pts=21)
     x0, y0 = math.floor(bx0 / CELL) * CELL, math.floor(by0 / CELL) * CELL
     x1, y1 = math.ceil(bx1 / CELL) * CELL, math.ceil(by1 / CELL) * CELL
+    #we set the bounds used in read_points
     width, height = (x1 - x0) // CELL, (y1 - y0) // CELL
 
     # A tile is named by its lower-left corner in 100 km units: E57N26 = x 5,700,000 / y 2,600,000.
     # A tile left out would silently turn into "unknown", so insist on all of them.
     need = {f"E{ix}N{iy}" for ix in range(x0 // TILE, (x1 - 1) // TILE + 1)
             for iy in range(y0 // TILE, (y1 - 1) // TILE + 1)}
+    #This creates a Python set containing all the tile names needed to cover your raster.
     tiles = {}
     for path in sorted(RAW.glob("*.csv")):
         if m := NAME.fullmatch(path.name):
