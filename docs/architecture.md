@@ -30,7 +30,7 @@ Flood is the core of the project. With GFM it is no longer the heavy layer: the 
 - **Known false alarm:** freshly tilled farmland can look like water to radar. GFM's manual lists it ("agricultural practices over cropland"). On 30 Apr–1 May 2024 GFM flagged ~15,000 ha of the polder north of Lake Brateș, and a Sentinel-2 image of 29 April shows bare fields, no water. The advisory flags remove part of it (30 Apr: 7.6 % → 4.6 % of the seen area; 1 May: 6.1 % → 5.8 %), so floodplain farmland can still show false spring flood dates. Removing them needs an optical cross-check (e.g. Sentinel-2), which isn't built.
 - **Why:** it passed the same pre-registered September dry-date test as our own method, by a wide margin, and was confirmed on a second, independent event. It fails the spring window that was added later. Our own v0.2 was tuned on the very data it was tested on and only passed by a hair. It also needs no compute quota and no raw-data downloads. Numbers: [flood-validation.md](flood-validation.md#copernicus-gfm-10-nov-2026).
 - **What we give up:** we can't tune it, it's 20 m instead of 10 m, and we depend on the EODC catalogue staying online (we download once and keep our own COG, so the app doesn't).
-- **Fallback:** our own thresholding method below stays in the repo, run either in Earth Engine (`flood.py`) or locally (`flood_local.py`).
+- **Fallback:** our own thresholding method below stays in the repo, run either in Earth Engine (`flood_earthengine.py`) or locally (`flood_local.py`).
 
 ### Own method (v0.2), kept as fallback
 Thresholding, because it's explainable and a simple baseline has to be beaten before anything fancier:
@@ -40,7 +40,7 @@ Thresholding, because it's explainable and a simple baseline has to be beaten be
 - Flooded = VV below −18 dB **and** VV more than 4 dB below the baseline **and** VH below −24 dB **and** not permanent water (JRC occurrence > 80 %) **and** at most 10 m above the nearest drainage (MERIT Hydro HAND).
 - Output per pixel: flooded passes and total passes.
 
-v0.2 (10 Nov 2026) set these numbers with the **dry-date test**. That test runs on dates with no known flood, against a false-alarm threshold set beforehand. They pass by a thin margin and were tuned on one event, so a second event and a second dry window must confirm them before the 10-year batch ([flood-validation.md](flood-validation.md)). They live as constants next to `ALGORITHM_VERSION` in `pipeline/flood.py`. Bump the version when they change, because it ends up in the export filename and in the evidence JSON.
+v0.2 (10 Nov 2026) set these numbers with the **dry-date test**. That test runs on dates with no known flood, against a false-alarm threshold set beforehand. They pass by a thin margin and were tuned on one event, so a second event and a second dry window must confirm them before the 10-year batch ([flood-validation.md](flood-validation.md)). They live as constants next to `ALGORITHM_VERSION` in `pipeline/flood_earthengine.py`. Bump the version when they change, because it ends up in the export filename and in the evidence JSON.
 
 ## Why these choices
 - **Batch, not on request:** fast, reproducible demo; the heavy part never runs while a user waits.
@@ -103,11 +103,14 @@ Rules:
 LandHorizon/
 ├── api/                         backend: FastAPI
 │   ├── main.py                  evidence contract (Pydantic) + POST /evidence; TiTiler mounts here later
-│   └── test_main.py             tests
+│   ├── test_main.py             tests
+│   └── test_plots.py            the 20 test plots against the real layers (skipped without them); prints the data-test table
 ├── pipeline/                    batch jobs, run ahead of time, never while a user waits
 │   ├── flood_gfm.py             flood history from Copernicus GFM → data/processed/flood_gfm.tif
+│   ├── flood_common.py          shared by the flood scripts: AOI and grid, water masks, EMS references, scoring
+│   ├── test_flood_common.py     tests for the shared helpers
 │   ├── gfm_score.py             scores GFM against EMS outlines and the dry-date test, like our own method
-│   ├── flood.py                 (fallback) Sentinel-1 flood counts in Earth Engine → COG on Drive; holds the thresholds
+│   ├── flood_earthengine.py     (fallback) Sentinel-1 flood counts in Earth Engine → COG on Drive; holds the thresholds
 │   ├── flood_local.py           (fallback prototype) the same method run locally: CDSE download + SNAP → COG
 │   ├── s1_preprocess.xml        SNAP graph for flood_local.py (the same steps as Earth Engine's S1_GRD)
 │   ├── test_flood_local.py      tests for the local flood method
@@ -123,7 +126,7 @@ LandHorizon/
 │   ├── raw/                     manual downloads (EGMS)
 │   │   └── reference/           flood outlines for validation (EMSR758, EMSR293, PAZ)
 │   ├── processed/               COGs the API reads (hand.tif, flood_gfm.tif, ground.tif)
-│   └── sample/                  (planned) small COGs, committed so a clean clone runs
+│   └── sample/                  small files, committed: plots.geojson (the 20 test plots); small COGs (planned)
 ├── docs/
 │   ├── architecture.md          this file
 │   └── flood-validation.md      flood test runs and their results
@@ -183,7 +186,7 @@ About 20 realistic plots around Galați, mostly non-urban, at three sizes (under
   - **An optical cross-check** (e.g. Sentinel-2 NDWI): not built.
 - **Period of the flood history:** 2024 only for now; the answer says so in `period_start`/`period_end`. Extending to 2015–2025 waits until the spring false alarm (above) has an answer. Older passes also sometimes lack GFM's advisory layer (198 of 9,102 scenes over 2015–2025, none in 2022–2024; [flood-validation.md](flood-validation.md)). Whether those count as "no warnings" (current) or "not seen" is undecided.
 - **Flood compute: Earth Engine or local.** Superseded by GFM for now; kept for the fallback. Tuning v0.2 used about 27 % of the 150 EECU-h monthly quota; each interactive evaluate run cost about 0.9 EECU-h. A v0.2 10-year batch probably doesn't fit the quota. The prototype `pipeline/flood_local.py` runs the same method locally:
-  - **Data:** Copernicus Data Space GRD scenes (free account), processed with ESA SNAP. That's the same chain Earth Engine uses, so the thresholds in `flood.py` are shared.
+  - **Data:** Copernicus Data Space GRD scenes (free account), processed with ESA SNAP. That's the same chain Earth Engine uses, so the thresholds in `flood_earthengine.py` are shared.
   - **HAND source:** the local run uses our GLO-30 `hand.tif` instead of MERIT.
   - **Cost:** no quota, but about 1.7 GB of download and a few minutes of SNAP per scene. Only a small AOI crop per scene is kept.
   - **Decision:** made after comparing its output with the Earth Engine v0.2 COG ([flood-validation.md](flood-validation.md)).

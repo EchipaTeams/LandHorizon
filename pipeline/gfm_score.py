@@ -33,8 +33,9 @@ import numpy as np
 import rasterio
 from rasterio._err import CPLE_BaseError
 
-import flood_local
-from flood_local import OUT, masks, report, to_grid, write_counts
+import flood_common
+from flood_common import OUT, masks, report, to_grid, write_counts
+from flood_earthengine import PERMANENT_WATER
 
 STAC = "https://stac.eodc.eu/api/v1/collections/GFM/items"
 
@@ -42,7 +43,7 @@ STAC = "https://stac.eodc.eu/api/v1/collections/GFM/items"
 def items(start, end):
     """GFM items (one per Sentinel-1 scene per Equi7 tile) touching the AOI in [start, end)."""
     url = STAC + "?" + urllib.parse.urlencode({
-        "bbox": ",".join(map(str, flood_local.AOI)), "limit": 100,
+        "bbox": ",".join(map(str, flood_common.AOI)), "limit": 100,
         "datetime": f"{start.isoformat()}T00:00:00Z/{end.isoformat()}T00:00:00Z"})
     out = []
     while url:
@@ -174,9 +175,9 @@ def counts(feats, verbose=True, save_dir=None):
 
 def save_pass(path, seen, flooded):
     """One pass as uint8: 1 flood, 0 seen and dry, 255 (no data) not seen."""
-    transform, width, height = flood_local.grid()
+    transform, width, height = flood_common.grid()
     path.parent.mkdir(parents=True, exist_ok=True)
-    with rasterio.open(path, "w", driver="GTiff", dtype="uint8", count=1, crs=flood_local.CRS, transform=transform,
+    with rasterio.open(path, "w", driver="GTiff", dtype="uint8", count=1, crs=flood_common.CRS, transform=transform,
                        width=width, height=height, nodata=255, compress="deflate", tiled=True) as dst:
         dst.write(np.where(seen, flooded, 255).astype("uint8"), 1)
 
@@ -189,15 +190,15 @@ def main():
     p.add_argument("--write", action="store_true", help="also write the counts as a COG for QGIS")
     p.add_argument("--save-passes", action="store_true", help="also keep one map per pass (for QGIS)")
     p.add_argument("--area-from-reference", action="store_true",
-                   help="use the reference's EMS area of interest (bounding box) instead of flood.py's AOI")
+                   help="use the reference's EMS area of interest (bounding box) instead of the default AOI")
     a = p.parse_args()
     if a.reference and not os.path.exists(a.reference):
         sys.exit(f"No such reference file: {a.reference}")
     if a.area_from_reference:
         if not a.reference:
             sys.exit("--area-from-reference needs --reference")
-        flood_local.set_area(ems_bbox(a.reference))
-        print(f"area: {flood_local.AOI} (from {os.path.basename(a.reference)})")
+        flood_common.set_area(ems_bbox(a.reference))
+        print(f"area: {flood_common.AOI} (from {os.path.basename(a.reference)})")
 
     feats = items(a.start, a.end)
     if not feats:
@@ -208,7 +209,7 @@ def main():
 
     # Land is defined as in the pre-registered criteria (not JRC permanent water above 80 %), so the
     # numbers compare directly with v0.2. GFM already sets its own reference water to "no flood".
-    permanent, _ = masks(hand_max_m=None)
+    permanent, _ = masks(hand_max_m=None, permanent_water=PERMANENT_WATER)
     report(n_flooded, n_passes, permanent, a.reference)
     print(f"no pass could see {np.mean(n_passes == 0):.1%} of the AOI (excluded or no data: unknown)")
     if a.write:

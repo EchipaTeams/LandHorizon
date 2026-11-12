@@ -7,7 +7,7 @@ Read `docs/architecture.md` before changing anything: it records what the team a
 - `uv run fastapi dev api/main.py`: run the API, docs at http://127.0.0.1:8000/docs
 - `uv run python pipeline/hand.py`: build `data/processed/hand.tif` (needed by the API)
 - `uv run pytest`: tests
-- `uv run python pipeline/flood.py --help`: flood pipeline (needs `earthengine authenticate` and `GEE_PROJECT`)
+- `uv run python pipeline/flood_earthengine.py --help`: flood pipeline (needs `earthengine authenticate` and `GEE_PROJECT`)
 
 ## Rules
 - **Dependencies:** add them with `uv add`, never pip. Commit `uv.lock`.
@@ -19,5 +19,5 @@ Read `docs/architecture.md` before changing anything: it records what the team a
   - anything from AIM-Space
 - **Keep it minimal:**
   - no speculative scaffolding, abstractions or stub folders
-  - flood thresholds live as constants in `pipeline/flood.py`; bump `ALGORITHM_VERSION` when you change them
+  - flood thresholds live as constants in `pipeline/flood_earthengine.py`; bump `ALGORITHM_VERSION` when you change them
 - **Docs:** if you change a decision, update `docs/architecture.md` in the same commit.
