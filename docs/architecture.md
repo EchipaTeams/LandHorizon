@@ -103,7 +103,8 @@ Rules:
 LandHorizon/
 ├── api/                         backend: FastAPI
 │   ├── main.py                  evidence contract (Pydantic) + POST /evidence; TiTiler mounts here later
-│   └── test_main.py             tests
+│   ├── test_main.py             tests
+│   └── test_plots.py            the 20 test plots against the real layers (skipped without them); prints the data-test table
 ├── pipeline/                    batch jobs, run ahead of time, never while a user waits
 │   ├── flood_gfm.py             flood history from Copernicus GFM → data/processed/flood_gfm.tif
 │   ├── flood_common.py          shared by the flood scripts: AOI and grid, water masks, EMS references, scoring
@@ -125,7 +126,7 @@ LandHorizon/
 │   ├── raw/                     manual downloads (EGMS)
 │   │   └── reference/           flood outlines for validation (EMSR758, EMSR293, PAZ)
 │   ├── processed/               COGs the API reads (hand.tif, flood_gfm.tif, ground.tif)
-│   └── sample/                  (planned) small COGs, committed so a clean clone runs
+│   └── sample/                  small files, committed: plots.geojson (the 20 test plots); small COGs (planned)
 ├── docs/
 │   ├── architecture.md          this file
 │   └── flood-validation.md      flood test runs and their results
