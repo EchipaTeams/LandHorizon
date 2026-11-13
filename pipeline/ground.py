@@ -6,9 +6,15 @@ tiles, E56N26 and E57N26). This reads their CSVs, not the TIFFs: the E57N26 TIFF
 is shifted one cell. It writes data/processed/ground.tif: mean_velocity in mm/yr
 on the EGMS 100 m grid, NaN where EGMS has no cell.
 
-  uv run python pipeline/ground.py
+  uv run python pipeline/ground.py                                      # build ground.tif
+  uv run python pipeline/ground.py --plots data/sample/plots.geojson    # data test (milestone 3)
+
+--plots reads ground.tif and prints, per plot, how many EGMS cells have their centre
+inside it and their median velocity; then a summary per size class. It writes nothing.
 """
+import argparse
 import csv
+import json
 import math
 import re
 import sys
@@ -16,8 +22,9 @@ from pathlib import Path
 
 import numpy as np
 import rasterio
+from rasterio.features import geometry_mask
 from rasterio.transform import from_origin
-from rasterio.warp import transform_bounds
+from rasterio.warp import transform_bounds, transform_geom
 
 from flood_common import AOI
 
@@ -41,7 +48,7 @@ def read_points(path, bounds):
         rows = csv.reader(f)
         header = next(rows)
         try:
-            #the script stores ie=0, i_n=1, iv=2
+            #find the three columns by name; their positions differ between files (1, 2 and 5 in EGMS's CSVs)
             ie, i_n, iv = (header.index(c) for c in ("easting", "northing", "mean_velocity"))
         except ValueError:
             #this happens in case the csv file has a missing column
@@ -60,12 +67,12 @@ def read_points(path, bounds):
     return points
 
 
-def main():
+def build():
     # Grid: the AOI's bounding box in EPSG:3035, snapped outward to EGMS cell edges (multiples of 100 m).
     bx0, by0, bx1, by1 = transform_bounds("EPSG:4326", CRS, *AOI, densify_pts=21)
     x0, y0 = math.floor(bx0 / CELL) * CELL, math.floor(by0 / CELL) * CELL
     x1, y1 = math.ceil(bx1 / CELL) * CELL, math.ceil(by1 / CELL) * CELL
-    #we set the bounds used in read_points
+    #the grid's size in 100 m cells; the bounds above are also passed to read_points
     width, height = (x1 - x0) // CELL, (y1 - y0) // CELL
 
     # A tile is named by its lower-left corner in 100 km units: E57N26 = x 5,700,000 / y 2,600,000.
@@ -105,6 +112,65 @@ def main():
           f"min {v.min():.1f}, median {np.median(v):.1f}, max {v.max():.1f}")
     if np.abs(v).max() > 100:
         print("WARNING: |velocity| above 100 mm/yr is rare; check the units of the product.")
+
+
+def ring_area(ring):
+    """Shoelace area of one ring, in the units of its coordinates squared (sign dropped)."""
+    x, y = np.array(ring, dtype=float).T
+    return abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1))) / 2
+
+
+def plot_cells(geometry, band, transform):
+    """(area in ha, EGMS cells whose centre lies inside, median mm/yr or None) for one WGS84 polygon.
+
+    None means unknown: no cell, so no measurement. It is never turned into 0.
+    """
+    geom = transform_geom("EPSG:4326", CRS, geometry)
+    polygons = geom["coordinates"] if geom["type"] == "MultiPolygon" else [geom["coordinates"]]
+    area_m2 = sum(ring_area(p[0]) - sum(ring_area(h) for h in p[1:]) for p in polygons)
+    # all_touched=False: a cell counts only if its centre is inside the plot.
+    inside = geometry_mask([geom], out_shape=band.shape, transform=transform, all_touched=False, invert=True)
+    values = band[inside & np.isfinite(band)]
+    return area_m2 / 10_000, values.size, float(np.median(values)) if values.size else None
+
+
+def report_plots(plots_path):
+    """Print the EGMS cells per plot and a summary per size class. Writes nothing."""
+    if not OUT.exists():
+        sys.exit(f"{OUT} not found: run `uv run python pipeline/ground.py` first to build it")
+    with rasterio.open(OUT) as src:
+        band, transform = src.read(1), src.transform
+        release = src.tags().get("RELEASE", "?")
+    features = json.loads(Path(plots_path).read_text())["features"]
+
+    print(f"EGMS cells per plot (centre inside), {OUT.name} release {release}")
+    print(f"{'name':<24} {'size_class':<11} {'area_ha':>8}  {'land_cover':<18} {'cells':>5}  median mm/yr")
+    by_class = {}
+    for f in features:
+        props = f["properties"]
+        area, cells, median = plot_cells(f["geometry"], band, transform)
+        by_class.setdefault(props["size_class"], []).append(cells)
+        shown = "unknown" if median is None else f"{median:.1f}"
+        print(f"{props['name']:<24} {props['size_class']:<11} {area:8.2f}  {props['land_cover']:<18} "
+              f"{cells:5d}  {shown}")
+
+    print("per size class:")
+    order = ["under_1_ha", "1_to_5_ha", "over_5_ha"]  # any other class the file uses goes last
+    for size_class in sorted(by_class, key=lambda c: order.index(c) if c in order else len(order)):
+        counts = by_class[size_class]
+        print(f"  {size_class:<11} plots {len(counts):2d}, with >=1 cell {sum(c > 0 for c in counts):2d}, "
+              f"cells per plot {sum(counts) / len(counts):.1f}")
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--plots", metavar="PATH",
+                   help="GeoJSON of WGS84 plots: print EGMS cells per plot from ground.tif (writes nothing)")
+    a = p.parse_args()
+    if a.plots:
+        report_plots(a.plots)
+    else:
+        build()
 
 
 if __name__ == "__main__":
