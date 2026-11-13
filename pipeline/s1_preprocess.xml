@@ -1,0 +1,75 @@
+<!-- Sentinel-1 GRD -> sigma0 in dB, terrain corrected, cropped to the AOI.
+     The same chain Earth Engine uses for COPERNICUS/S1_GRD, so flood_earthengine.py's thresholds carry over.
+     Run by pipeline/flood_local.py:  gpt s1_preprocess.xml -Pinput=... -Poutput=... -Paoi="POLYGON(...)" -->
+<graph id="s1_preprocess">
+  <version>1.0</version>
+  <node id="Read">
+    <operator>Read</operator>
+    <sources/>
+    <parameters>
+      <file>${input}</file>
+    </parameters>
+  </node>
+  <node id="Orbit">
+    <operator>Apply-Orbit-File</operator>
+    <sources><sourceProduct refid="Read"/></sources>
+    <parameters>
+      <orbitType>Sentinel Precise (Auto Download)</orbitType>
+      <continueOnFail>false</continueOnFail>  <!-- no precise orbit (e.g. offline): fail, never cache a less accurate scene -->
+    </parameters>
+  </node>
+  <node id="ThermalNoise">
+    <operator>ThermalNoiseRemoval</operator>
+    <sources><sourceProduct refid="Orbit"/></sources>
+    <parameters>
+      <selectedPolarisations>VV,VH</selectedPolarisations>
+      <removeThermalNoise>true</removeThermalNoise>
+    </parameters>
+  </node>
+  <node id="BorderNoise">
+    <operator>Remove-GRD-Border-Noise</operator>
+    <sources><sourceProduct refid="ThermalNoise"/></sources>
+    <parameters>
+      <selectedPolarisations>VV,VH</selectedPolarisations>
+    </parameters>
+  </node>
+  <node id="Calibration">
+    <operator>Calibration</operator>
+    <sources><sourceProduct refid="BorderNoise"/></sources>
+    <parameters>
+      <selectedPolarisations>VV,VH</selectedPolarisations>
+      <outputSigmaBand>true</outputSigmaBand>
+    </parameters>
+  </node>
+  <node id="Subset">
+    <operator>Subset</operator>
+    <sources><sourceProduct refid="Calibration"/></sources>
+    <parameters>
+      <geoRegion>${aoi}</geoRegion>
+      <copyMetadata>true</copyMetadata>
+    </parameters>
+  </node>
+  <node id="TerrainCorrection">
+    <operator>Terrain-Correction</operator>
+    <sources><sourceProduct refid="Subset"/></sources>
+    <parameters>
+      <demName>SRTM 1Sec HGT</demName>
+      <pixelSpacingInMeter>10.0</pixelSpacingInMeter>
+      <mapProjection>EPSG:32635</mapProjection>
+      <nodataValueAtSea>false</nodataValueAtSea>
+    </parameters>
+  </node>
+  <node id="dB">
+    <operator>LinearToFromdB</operator>
+    <sources><sourceProduct refid="TerrainCorrection"/></sources>
+    <parameters/>
+  </node>
+  <node id="Write">
+    <operator>Write</operator>
+    <sources><sourceProduct refid="dB"/></sources>
+    <parameters>
+      <file>${output}</file>
+      <formatName>GeoTIFF-BigTIFF</formatName>
+    </parameters>
+  </node>
+</graph>

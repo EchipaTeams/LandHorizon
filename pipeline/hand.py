@@ -12,7 +12,7 @@ import numpy as np
 import rasterio
 from rasterio.merge import merge
 
-from flood import AOI
+from flood_common import AOI
 
 # ponytail: north/east hemispheres only, which covers Romania.
 URL = "https://glo-30-hand.s3.us-west-2.amazonaws.com/v1/2021/Copernicus_DSM_COG_10_N{lat:02d}_00_E{lon:03d}_00_HAND.tif"

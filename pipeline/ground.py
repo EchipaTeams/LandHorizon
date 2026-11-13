@@ -19,7 +19,7 @@ import rasterio
 from rasterio.transform import from_origin
 from rasterio.warp import transform_bounds
 
-from flood import AOI
+from flood_common import AOI
 
 # EGMS Ortho grid: ETRS89-LAEA, 100 m cells centred on ...50 m, in 100 km tiles.
 CRS, CELL, TILE = "EPSG:3035", 100, 100_000
