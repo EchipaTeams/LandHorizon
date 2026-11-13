@@ -17,7 +17,7 @@ The pipeline turns raw data into COGs **once, ahead of time**, for one pilot reg
 | Layer | Source | Raw data | Processed | Result |
 |---|---|---|---|---|
 | Flood (Sentinel-1; 2024 for now, ~10 years planned) | Copernicus GFM (CEMS Global Flood Monitoring), per-pass flood + exclusion layers from the EODC STAC catalogue, no account | Not downloaded: only the AOI window of each pass is read over HTTP | Locally, counted per pixel (`pipeline/flood_gfm.py`) | `flood_gfm.tif` |
-| Ground motion (EGMS Ortho) | EGMS Explorer, login, manual download | `data/raw/` | Locally, geopandas + rasterio, rasterized once | `ground.tif` |
+| Ground motion (EGMS Ortho) | EGMS Explorer, login, manual download | `data/raw/` | Locally, from the CSVs (csv + numpy + rasterio), rasterized once (`pipeline/ground.py`) | `ground.tif` |
 | Terrain (HAND) | ASF tiles (Copernicus 30 m DEM), public COGs | Not downloaded: only the AOI window is read over HTTP | Locally, rasterio merge + clip (`pipeline/hand.py`) | `hand.tif` |
 | Validation | Copernicus EMS outlines (EMSR758, EMSR293), PAZ | `data/raw/reference/` | Compared with the flood output (`pipeline/gfm_score.py`) | Precision and recall |
 
@@ -115,7 +115,7 @@ LandHorizon/
 │   ├── s1_preprocess.xml        SNAP graph for flood_local.py (the same steps as Earth Engine's S1_GRD)
 │   ├── test_flood_local.py      tests for the local flood method
 │   ├── hand.py                  HAND for the AOI → data/processed/hand.tif
-│   └── ground.py                (planned) EGMS points → data/processed/ground.tif
+│   └── ground.py                EGMS Ortho U CSVs → data/processed/ground.tif
 ├── web/                         frontend: React + Vite + MapLibre (frontend team)
 │   ├── README.md                what goes here and how to talk to the API
 │   └── src/                     (planned) suggested shape, the frontend team decides
@@ -153,7 +153,12 @@ Engineering only. Dates come from the team plan.
 
 ## Data test (milestone 3)
 About 20 realistic plots around Galați, mostly non-urban, at three sizes (under 1 ha, 1–5 ha, larger):
-- **EGMS:** the delivery format, and how many plots get cells at each size.
+- **EGMS:** the delivery format, and how many plots get cells at each size. Answered on 13 Nov 2026:
+  - **Format:** EGMS Explorer → Product Archive (login), Ortho (Level 3), Vertical (U), release 2020–2025. One zip per 100 km tile, holding a CSV, a TIFF and a small XML (metadata only). The AOI needs two tiles, E56N26 and E57N26: about 58 MB zipped, 240 MB unzipped. The CSV has `easting`, `northing`, `mean_velocity` (mm/yr, rounded to 0.1), `mean_velocity_std` and more, then one column per date; EPSG:3035, 100 m grid, cell centres end in 50 m.
+  - **The E57N26 TIFF is one cell off:** EGMS georeferenced it 100 m east and 100 m south of its tile name, so its values land on the neighbouring cell. The E56N26 TIFF is correct. That's why `pipeline/ground.py` reads the CSVs. E57N26 was produced later (16 Oct 2026, E56N26 on 28 Jul 2026, per the XML), so recheck it if the tiles are downloaded again.
+  - **Coverage:** `ground.tif` has 41,181 cells with data, about 9 % of the AOI grid; velocity −17.8 to +16.4 mm/yr, median −0.6. Cells sit on buildings, roads and villages; fields, water and wetland are mostly empty.
+  - **Cells per plot** (`uv run python pipeline/ground.py --plots data/sample/plots.geojson`; a cell counts when its centre is inside the plot): under 1 ha, 0 of 7 plots get a cell; 1–5 ha, 1 of 8; over 5 ha, 1 of 5 (0.0 / 0.1 / 0.8 cells per plot). The two are `edge-50` (1.9 ha, 1 cell) and `edge-65` (7.5 ha, 4 cells). All 20 plots are farmland, grass or wetland, so for non-urban plots ground motion is usually **unknown**, as expected for a layer shown "where it exists".
+  - **For the API (milestone 4):** `n_cells` must use the same rule, a cell's centre inside the plot. `read_plot` in `api/main.py` uses `all_touched=True`, which would also count every cell a small plot only touches.
 - **Flood reference:** recheck EMSR758 and the PAZ outline.
 - **HAND:** confirmed on 8 Nov; the tiles open over HTTP.
 - **Earth Engine:** measure the EECU-hours of one run (Tasks tab). The dry-date test plus two full 10-year runs must fit the 150 EECU-h/month free tier. Otherwise use 2019–2024.
