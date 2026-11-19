@@ -53,11 +53,12 @@ v0.2 (10 Nov 2026) set these numbers with the **dry-date test**. That test runs 
   - **TiTiler:** it plugs straight in.
 - **TiTiler:** renders map tiles from COGs on demand, so we don't pre-generate thousands of PNGs. It only serves the map overlays.
 - **React + MapLibre:** drawing on a map needs JavaScript whatever the backend. React keeps the frontend behind the JSON contract, so it's built in parallel against the mock. MapLibre is open source and needs no token.
+- **Frontend details (PR #5, merged 19 Nov 2026; the frontend team decides, [web/README.md](../web/README.md)):** TypeScript on Vite, with the client types taken from `/openapi.json` so the contract isn't copied by hand; Tailwind for the layout and the `@media print` styles behind the PDF; a picker for the 20 test plots in `data/sample/plots.geojson`; a mock mode for working without the COGs.
 
 **If accounts or saved reports are ever added:** Postgres plus auth (PostGIS only for spatial queries). The pipeline and the COGs don't change either way.
 
 ## The evidence contract
-The JSON `POST /evidence` returns is the contract between backend and frontend. **The source of truth is the Pydantic models in `api/main.py`** (browse them at `/docs`). Don't keep a second copy anywhere. Terrain and flood are real; plot, ground and overall are still a fixed mock.
+The JSON `POST /evidence` returns is the contract between backend and frontend. **The source of truth is the Pydantic models in `api/main.py`** (browse them at `/docs`). Don't keep a second copy anywhere. Terrain, flood, ground and plot are real; overall is still a fixed mock, because its format waits for the customer interviews. Its one reason says exactly that, because a fixed reason about the layers (it used to say "no ground-motion cells under plot") contradicts plots where ground is measured.
 
 **Flood fields** (real since 10 Nov 2026, from `flood_gfm.tif`):
 - `status`: `unknown` when satellite passes could see less than half of the plot (GFM excluded the rest, e.g. high ground or a city). Show it together with `observed_fraction` and the terrain layer's `hand_m`, which usually explains why.
@@ -68,14 +69,24 @@ The JSON `POST /evidence` returns is the contract between backend and frontend. 
 - `algorithm_version`: `gfm-ensemble`.
 - `period_start`, `period_end`: the period the flood history covers, both days inclusive (now 2024-01-01 … 2024-12-31). Read from the tags `flood_gfm.py` writes into `flood_gfm.tif`. Added 10 Nov 2026, agreed by the lead.
 
+**Ground fields** (real since 16 Nov 2026, from `ground.tif`; the shape of the model didn't change):
+- `n_cells`: EGMS cells (100 m) whose **centre is inside the plot**, the same rule as `pipeline/ground.py --plots`. Flood and terrain take every pixel a plot touches; for 100 m cells that would give a 0.5 ha plot the motion of a building next to it.
+- `velocity_mm_yr`: median vertical velocity of those cells, in mm/yr (negative = sinking), to 0.1 as EGMS delivers it.
+- `status`: `unknown` when no cell has its centre inside, with `velocity_mm_yr` `null` and `n_cells` 0, never 0 mm/yr. On farmland that is the usual answer: 18 of the 20 test plots.
+- `release`: the EGMS release behind the answer (now `2020-2025`), read from the tag `ground.py` writes into `ground.tif`. Filled for unknown plots too.
+
+**Plot fields** (real since 16 Nov 2026):
+- `area_ha`: the polygon's area in hectares, to 0.01, computed in EPSG:3035 (equal-area), holes subtracted.
+- `n_pixels` (reading accepted by the lead on 19 Nov 2026): the pixels of the flood grid (10 m) the plot touches, the ones `flood.observed_fraction` is a share of. It tells how many flood measurements fit on the plot. Because a touched pixel counts whole, it is more than `area_ha` × 100: 89 for the 0.60 ha test plot `flood-pechea-1`. The docs didn't define it before; the mock (0.8 ha, 80 px) fits a 10 m grid.
+
 Rules:
 - Every layer carries a `status` (`measured` / `unknown`) and how much data sits behind it (`n_passes`, `n_cells`, ...).
 - A plot with no data must come out as unknown, never as low or medium.
 - Contract changes need the lead's review, because they break the frontend.
 
 ## Data and updates
-- `data/raw/` and `data/processed/` are gitignored. Full COGs are shared through a GitHub Release or Drive.
-- `data/sample/` is committed (small files only), so a clean clone runs. EGMS needs a login and can't be scripted.
+- `data/raw/` and `data/processed/` are gitignored. The COGs the API reads (`hand.tif`, `flood_gfm.tif`, `ground.tif`) are shared on the **team Drive**: copy them into `data/processed/`. The API answers 503 while one is missing, so this is the first step after cloning (README, *Run it*). It matters most for `ground.tif`: EGMS needs a login and can't be scripted.
+- `data/sample/` is committed (small files only): the 20 test plots. `api/test_main.py` builds its own tiny rasters, so `uv run pytest` passes on a clean clone; `api/test_plots.py` is skipped until the three COGs are in place.
 - The deployed server reads COGs from a Docker volume or bucket URL.
 - **For the demo the data is frozen**, so validation and pitch numbers stay fixed. The pipeline stays one re-runnable command with a date range.
 - **In a real product:** a separate scheduled job, not the web app, processes new passes into a new versioned COG.
@@ -104,7 +115,7 @@ LandHorizon/
 ├── api/                         backend: FastAPI
 │   ├── main.py                  evidence contract (Pydantic) + POST /evidence; TiTiler mounts here later
 │   ├── test_main.py             tests
-│   └── test_plots.py            the 20 test plots against the real layers (skipped without them); prints the data-test table
+│   └── test_plots.py            the 20 test plots against the real layers (skipped without all three); prints the data-test table
 ├── pipeline/                    batch jobs, run ahead of time, never while a user waits
 │   ├── flood_gfm.py             flood history from Copernicus GFM → data/processed/flood_gfm.tif
 │   ├── flood_common.py          shared by the flood scripts: AOI and grid, water masks, EMS references, scoring
@@ -116,7 +127,7 @@ LandHorizon/
 │   ├── test_flood_local.py      tests for the local flood method
 │   ├── hand.py                  HAND for the AOI → data/processed/hand.tif
 │   └── ground.py                EGMS Ortho U CSVs → data/processed/ground.tif
-├── web/                         frontend: React + Vite + MapLibre (frontend team)
+├── web/                         frontend: React + TypeScript + Vite + Tailwind + MapLibre (frontend team)
 │   ├── README.md                what goes here and how to talk to the API
 │   └── src/                     (planned) suggested shape, the frontend team decides
 │       ├── api/                 client for POST /evidence (types from /openapi.json)
@@ -125,7 +136,7 @@ LandHorizon/
 ├── data/                        gitignored, except sample/
 │   ├── raw/                     manual downloads (EGMS)
 │   │   └── reference/           flood outlines for validation (EMSR758, EMSR293, PAZ)
-│   ├── processed/               COGs the API reads (hand.tif, flood_gfm.tif, ground.tif)
+│   ├── processed/               COGs the API reads (hand.tif, flood_gfm.tif, ground.tif), copied from the team Drive
 │   └── sample/                  small files, committed: plots.geojson (the 20 test plots); small COGs (planned)
 ├── docs/
 │   ├── architecture.md          this file
@@ -158,13 +169,13 @@ About 20 realistic plots around Galați, mostly non-urban, at three sizes (under
   - **The E57N26 TIFF is one cell off:** EGMS georeferenced it 100 m east and 100 m south of its tile name, so its values land on the neighbouring cell. The E56N26 TIFF is correct. That's why `pipeline/ground.py` reads the CSVs. E57N26 was produced later (16 Oct 2026, E56N26 on 28 Jul 2026, per the XML), so recheck it if the tiles are downloaded again.
   - **Coverage:** `ground.tif` has 41,181 cells with data, about 9 % of the AOI grid; velocity −17.8 to +16.4 mm/yr, median −0.6. Cells sit on buildings, roads and villages; fields, water and wetland are mostly empty.
   - **Cells per plot** (`uv run python pipeline/ground.py --plots data/sample/plots.geojson`; a cell counts when its centre is inside the plot): under 1 ha, 0 of 7 plots get a cell; 1–5 ha, 1 of 8; over 5 ha, 1 of 5 (0.0 / 0.1 / 0.8 cells per plot). The two are `edge-50` (1.9 ha, 1 cell) and `edge-65` (7.5 ha, 4 cells). All 20 plots are farmland, grass or wetland, so for non-urban plots ground motion is usually **unknown**, as expected for a layer shown "where it exists".
-  - **For the API (milestone 4):** `n_cells` must use the same rule, a cell's centre inside the plot. `read_plot` in `api/main.py` uses `all_touched=True`, which would also count every cell a small plot only touches.
+  - **In the API (16 Nov 2026):** `POST /evidence` uses the same rule, a cell's centre inside the plot (`read_plot(..., all_touched=False)` in `api/main.py`), and gives the same cells and medians for all 20 plots: `edge-50` 1 cell, −4.6 mm/yr; `edge-65` 4 cells, 0.4 mm/yr; the other 18 unknown.
 - **Flood reference:** recheck EMSR758 and the PAZ outline.
 - **HAND:** confirmed on 8 Nov; the tiles open over HTTP.
 - **Earth Engine:** measure the EECU-hours of one run (Tasks tab). The dry-date test plus two full 10-year runs must fit the 150 EECU-h/month free tier. Otherwise use 2019–2024.
 
 ## Verification
-- **Unknown rule:** a plot with no data returns `status: "unknown"`, never a low value. Every layer gets this test when it goes live (terrain's and flood's are in `api/test_main.py`).
+- **Unknown rule:** a plot with no data returns `status: "unknown"`, never a low value. Every layer gets this test when it goes live (terrain's, flood's and ground's are in `api/test_main.py`).
 - **Contract:** Pydantic validates every response; tests call `POST /evidence`.
 - **Terrain sanity:** known spots give plausible HAND (on 8 Nov: lake 0 m, Danube bank about 1 m, hills about 60 m).
 - **Flood, dry-date test:** run on dates with no known flood. Write the allowed false-alarm rate down **before** running. If it fails, change the constants and bump `ALGORITHM_VERSION`. Criteria, fixed on 10 Nov 2026 before any test run:
