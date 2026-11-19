@@ -6,8 +6,8 @@ How it's built and why: [docs/architecture.md](docs/architecture.md).
 
 ## Layout
 ```
-api/        backend: the evidence contract + POST /evidence (terrain real, rest mock)
-pipeline/   batch jobs that turn satellite data into COGs (flood, HAND)
+api/        backend: the evidence contract + POST /evidence (all layers real, overall score still mock)
+pipeline/   batch jobs that turn satellite data into COGs (flood, HAND, ground motion)
 web/        frontend: React + MapLibre (frontend team, not set up yet)
 docs/       architecture and decisions
 ```
@@ -16,10 +16,16 @@ Full tree: [docs/architecture.md](docs/architecture.md#repository-layout).
 ## Run it
 Needs Python 3.14 and [uv](https://docs.astral.sh/uv/).
 
+The API reads three COGs from `data/processed/` and answers 503 while one is missing. The quickest way to get them is to copy `hand.tif`, `flood_gfm.tif` and `ground.tif` from the team Drive into `data/processed/` (ask the team for access). Or build them yourself:
+```
+uv run python pipeline/hand.py      # data/processed/hand.tif (~20 MB, public data)
+uv run python pipeline/flood_gfm.py 2024-01-01 2025-01-01   # data/processed/flood_gfm.tif (public data, no account, ~1 h)
+uv run python pipeline/ground.py    # data/processed/ground.tif; needs the EGMS tiles in data/raw/egms/ (login, see the script)
+```
+
+Then:
 ```
 uv sync
-uv run python pipeline/hand.py      # once: builds data/processed/hand.tif (~20 MB, public data)
-uv run python pipeline/flood_gfm.py 2024-01-01 2025-01-01   # once: data/processed/flood_gfm.tif (public data, no account, ~1 h)
 uv run fastapi dev api/main.py      # API docs at http://127.0.0.1:8000/docs
 uv run pytest                       # tests
 ```

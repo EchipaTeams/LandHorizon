@@ -87,7 +87,9 @@ MOCK = Evidence(
                 period_start=date(2024, 1, 1), period_end=date(2024, 12, 31)),
     ground=Ground(status="unknown", velocity_mm_yr=None, n_cells=0, release="2019-2023"),
     terrain=Terrain(status="measured", hand_m=1.7),
-    overall=Overall(status="incomplete", score=None, reasons=["no ground-motion cells under plot"]),
+    # Fixed for every plot, so its reason must not claim anything about the plot's layers.
+    overall=Overall(status="incomplete", score=None,
+                    reasons=["no overall score yet: its format waits for the customer interviews"]),
 )
 
 
@@ -173,7 +175,7 @@ def plot(polygon: Polygon) -> Plot:
     # Area in ETRS89-LAEA (EPSG:3035), an equal-area projection, as pipeline/ground.py does. Holes are subtracted.
     outer, *holes = transform_geom("EPSG:4326", "EPSG:3035", polygon.model_dump())["coordinates"]
     area_m2 = ring_area(outer) - sum(ring_area(h) for h in holes)
-    # n_pixels, proposed reading (needs the lead's review): the pixels of the flood grid (10 m) the plot
+    # n_pixels (reading accepted by the lead, 19 Nov 2026): the pixels of the flood grid (10 m) the plot
     # touches. These are the pixels flood.observed_fraction is a share of. Only the grid is used, no pixel is read.
     with rasterio.open(FLOOD_PATH) as src:
         outside, _, _ = raster_geometry_mask(src, [transform_geom("EPSG:4326", src.crs, polygon.model_dump())],

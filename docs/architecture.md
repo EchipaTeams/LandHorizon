@@ -53,11 +53,12 @@ v0.2 (10 Nov 2026) set these numbers with the **dry-date test**. That test runs 
   - **TiTiler:** it plugs straight in.
 - **TiTiler:** renders map tiles from COGs on demand, so we don't pre-generate thousands of PNGs. It only serves the map overlays.
 - **React + MapLibre:** drawing on a map needs JavaScript whatever the backend. React keeps the frontend behind the JSON contract, so it's built in parallel against the mock. MapLibre is open source and needs no token.
+- **Frontend details (PR #5, merged 19 Nov 2026; the frontend team decides, [web/README.md](../web/README.md)):** TypeScript on Vite, with the client types taken from `/openapi.json` so the contract isn't copied by hand; Tailwind for the layout and the `@media print` styles behind the PDF; a picker for the 20 test plots in `data/sample/plots.geojson`; a mock mode for working without the COGs.
 
 **If accounts or saved reports are ever added:** Postgres plus auth (PostGIS only for spatial queries). The pipeline and the COGs don't change either way.
 
 ## The evidence contract
-The JSON `POST /evidence` returns is the contract between backend and frontend. **The source of truth is the Pydantic models in `api/main.py`** (browse them at `/docs`). Don't keep a second copy anywhere. Terrain, flood, ground and plot are real; overall is still a fixed mock, because its format waits for the customer interviews.
+The JSON `POST /evidence` returns is the contract between backend and frontend. **The source of truth is the Pydantic models in `api/main.py`** (browse them at `/docs`). Don't keep a second copy anywhere. Terrain, flood, ground and plot are real; overall is still a fixed mock, because its format waits for the customer interviews. Its one reason says exactly that, because a fixed reason about the layers (it used to say "no ground-motion cells under plot") contradicts plots where ground is measured.
 
 **Flood fields** (real since 10 Nov 2026, from `flood_gfm.tif`):
 - `status`: `unknown` when satellite passes could see less than half of the plot (GFM excluded the rest, e.g. high ground or a city). Show it together with `observed_fraction` and the terrain layer's `hand_m`, which usually explains why.
@@ -76,7 +77,7 @@ The JSON `POST /evidence` returns is the contract between backend and frontend. 
 
 **Plot fields** (real since 16 Nov 2026):
 - `area_ha`: the polygon's area in hectares, to 0.01, computed in EPSG:3035 (equal-area), holes subtracted.
-- `n_pixels`: **proposed reading, needs the lead's review.** The pixels of the flood grid (10 m) the plot touches, the ones `flood.observed_fraction` is a share of. It tells how many flood measurements fit on the plot. Because a touched pixel counts whole, it is more than `area_ha` × 100: 89 for the 0.60 ha test plot `flood-pechea-1`. The docs didn't define it before; the mock (0.8 ha, 80 px) fits a 10 m grid.
+- `n_pixels` (reading accepted by the lead on 19 Nov 2026): the pixels of the flood grid (10 m) the plot touches, the ones `flood.observed_fraction` is a share of. It tells how many flood measurements fit on the plot. Because a touched pixel counts whole, it is more than `area_ha` × 100: 89 for the 0.60 ha test plot `flood-pechea-1`. The docs didn't define it before; the mock (0.8 ha, 80 px) fits a 10 m grid.
 
 Rules:
 - Every layer carries a `status` (`measured` / `unknown`) and how much data sits behind it (`n_passes`, `n_cells`, ...).
@@ -84,8 +85,8 @@ Rules:
 - Contract changes need the lead's review, because they break the frontend.
 
 ## Data and updates
-- `data/raw/` and `data/processed/` are gitignored. Full COGs are shared through a GitHub Release or Drive.
-- `data/sample/` is committed (small files only), so a clean clone runs. EGMS needs a login and can't be scripted.
+- `data/raw/` and `data/processed/` are gitignored. The COGs the API reads (`hand.tif`, `flood_gfm.tif`, `ground.tif`) are shared on the **team Drive**: copy them into `data/processed/`. The API answers 503 while one is missing, so this is the first step after cloning (README, *Run it*). It matters most for `ground.tif`: EGMS needs a login and can't be scripted.
+- `data/sample/` is committed (small files only): the 20 test plots. `api/test_main.py` builds its own tiny rasters, so `uv run pytest` passes on a clean clone; `api/test_plots.py` is skipped until the three COGs are in place.
 - The deployed server reads COGs from a Docker volume or bucket URL.
 - **For the demo the data is frozen**, so validation and pitch numbers stay fixed. The pipeline stays one re-runnable command with a date range.
 - **In a real product:** a separate scheduled job, not the web app, processes new passes into a new versioned COG.
@@ -126,7 +127,7 @@ LandHorizon/
 │   ├── test_flood_local.py      tests for the local flood method
 │   ├── hand.py                  HAND for the AOI → data/processed/hand.tif
 │   └── ground.py                EGMS Ortho U CSVs → data/processed/ground.tif
-├── web/                         frontend: React + Vite + MapLibre (frontend team)
+├── web/                         frontend: React + TypeScript + Vite + Tailwind + MapLibre (frontend team)
 │   ├── README.md                what goes here and how to talk to the API
 │   └── src/                     (planned) suggested shape, the frontend team decides
 │       ├── api/                 client for POST /evidence (types from /openapi.json)
@@ -135,7 +136,7 @@ LandHorizon/
 ├── data/                        gitignored, except sample/
 │   ├── raw/                     manual downloads (EGMS)
 │   │   └── reference/           flood outlines for validation (EMSR758, EMSR293, PAZ)
-│   ├── processed/               COGs the API reads (hand.tif, flood_gfm.tif, ground.tif)
+│   ├── processed/               COGs the API reads (hand.tif, flood_gfm.tif, ground.tif), copied from the team Drive
 │   └── sample/                  small files, committed: plots.geojson (the 20 test plots); small COGs (planned)
 ├── docs/
 │   ├── architecture.md          this file
