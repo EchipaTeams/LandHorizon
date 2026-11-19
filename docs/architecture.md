@@ -53,7 +53,12 @@ v0.2 (10 Nov 2026) set these numbers with the **dry-date test**. That test runs 
   - **TiTiler:** it plugs straight in.
 - **TiTiler:** renders map tiles from COGs on demand, so we don't pre-generate thousands of PNGs. It only serves the map overlays.
 - **React + MapLibre:** drawing on a map needs JavaScript whatever the backend. React keeps the frontend behind the JSON contract, so it's built in parallel against the mock. MapLibre is open source and needs no token.
-- **Frontend details (PR #5, merged 19 Nov 2026; the frontend team decides, [web/README.md](../web/README.md)):** TypeScript on Vite, with the client types taken from `/openapi.json` so the contract isn't copied by hand; Tailwind for the layout and the `@media print` styles behind the PDF; a picker for the 20 test plots in `data/sample/plots.geojson`; a mock mode for working without the COGs.
+- **Frontend details (PR #5, merged 19 Nov 2026; the frontend team decides, [web/README.md](../web/README.md)):** TypeScript on Vite, with the client types generated from `/openapi.json` (`openapi-typescript`) so the contract isn't copied by hand; Tailwind for the layout and the `@media print` styles behind the PDF; a picker for the 20 test plots in `data/sample/plots.geojson`; a mock mode for working without the COGs. The website code lives in its own repo, `EchipaTeams/demo-repository`.
+- **Mock mode (agreed on the lead's review of PR #5, 19 Nov 2026):**
+  - **A manual toggle only, never an automatic fallback.** `MOCK` looks measured (flood `measured`, 42 % flooded, HAND 1.7 m). A UI that fell back to it whenever the API failed would show fake data as real, which breaks the unknown rule. It would happen often, because the API answers 503 while a COG is missing.
+  - **While it is on**, every view and the printed PDF show a visible **MOCK** label.
+  - **With it off**, a 503 is shown as a server error, never as mock data and never as `unknown` (unknown means the satellites didn't see the plot).
+  - **No second copy:** the website's mock JSON is exported from `MOCK` in `api/main.py`, not hand-written (command in [web/README.md](../web/README.md#generated-files)).
 
 **If accounts or saved reports are ever added:** Postgres plus auth (PostGIS only for spatial queries). The pipeline and the COGs don't change either way.
 
@@ -127,12 +132,8 @@ LandHorizon/
 │   ├── test_flood_local.py      tests for the local flood method
 │   ├── hand.py                  HAND for the AOI → data/processed/hand.tif
 │   └── ground.py                EGMS Ortho U CSVs → data/processed/ground.tif
-├── web/                         frontend: React + TypeScript + Vite + Tailwind + MapLibre (frontend team)
-│   ├── README.md                what goes here and how to talk to the API
-│   └── src/                     (planned) suggested shape, the frontend team decides
-│       ├── api/                 client for POST /evidence (types from /openapi.json)
-│       ├── components/          map with polygon drawing, result panel
-│       └── pages/               one flow: draw a plot → result → report (PDF via print CSS)
+├── web/                         frontend decisions; the code is in EchipaTeams/demo-repository (React + TypeScript + Vite + Tailwind + MapLibre)
+│   └── README.md                frontend decisions, generated types and mock, how the website talks to the API
 ├── data/                        gitignored, except sample/
 │   ├── raw/                     manual downloads (EGMS)
 │   │   └── reference/           flood outlines for validation (EMSR758, EMSR293, PAZ)
