@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 import pytest
 import rasterio
@@ -22,7 +24,8 @@ LEFT, RIGHT = square(28.001, 45.401), square(28.0065, 45.401)  # left half / rig
 @pytest.fixture
 def layers(tmp_path, monkeypatch):
     """HAND: left half 2 m, right half no data. Flood: left half seen by 3 passes, right half never seen
-    (GFM excluded it). One pass (14 Sept) saw water on the whole left half, another (21 Sept) on one pixel."""
+    (GFM excluded it). One pass (14 Sept) saw water on the whole left half, another (21 Sept) on one pixel.
+    Ground: four cells with data in the lower left (a 2x2 block), no cell anywhere else."""
     hand = np.full((1, 10, 10), 2.0, dtype="float32")
     hand[:, :, 5:] = np.nan
     with rasterio.open(tmp_path / "hand.tif", "w", count=1, dtype="float32", nodata=float("nan"), **GRID) as dst:
@@ -40,6 +43,13 @@ def layers(tmp_path, monkeypatch):
         dst.descriptions = ("n_flooded", "n_passes", "2024-09-14T04", "2024-09-21T04")
         dst.update_tags(period_start="2024-01-01", period_end="2025-01-01")  # as flood_gfm.py writes them
 
+    ground = np.full((10, 10), np.nan, dtype="float32")  # mm/yr; NaN = EGMS has no cell there
+    ground[8, 1], ground[7, 1], ground[8, 2], ground[7, 2] = -3.2, -1.0, 1.4, -2.0  # [8, 1] is the cell under LEFT
+    with rasterio.open(tmp_path / "ground.tif", "w", count=1, dtype="float32", nodata=float("nan"), **GRID) as dst:
+        dst.write(ground, 1)
+        dst.update_tags(RELEASE="2020-2025")  # as ground.py writes it
+
+    monkeypatch.setattr(main, "GROUND_PATH", tmp_path / "ground.tif")
     monkeypatch.setattr(main, "HAND_PATH", tmp_path / "hand.tif")
     monkeypatch.setattr(main, "FLOOD_PATH", tmp_path / "flood.tif")
     return tmp_path
@@ -85,3 +95,43 @@ def test_flood(layers, monkeypatch):
 
     monkeypatch.setattr(main, "FLOOD_PATH", layers / "missing.tif")
     assert client.post("/evidence", json=LEFT).status_code == 503
+
+
+def test_ground(layers, monkeypatch):
+    one = client.post("/evidence", json=LEFT).json()["ground"]
+    assert one == {"status": "measured", "velocity_mm_yr": -3.2, "n_cells": 1, "release": "2020-2025"}
+    # 2x2 cells: the median of -3.2, -2.0, -1.0 and 1.4.
+    four = client.post("/evidence", json=square(28.001, 45.401, d=0.002)).json()["ground"]
+    assert four == {"status": "measured", "velocity_mm_yr": -1.5, "n_cells": 4, "release": "2020-2025"}
+
+    # The unknown rule: no EGMS cell under the plot is "unknown" with no velocity, never "0 mm/yr".
+    none = client.post("/evidence", json=RIGHT).json()["ground"]
+    assert none == {"status": "unknown", "velocity_mm_yr": None, "n_cells": 0, "release": "2020-2025"}
+
+    # The centre rule: a small plot inside the -3.2 cell that doesn't contain its centre gets no cell.
+    # (Flood and terrain do count this pixel: they take every pixel a plot touches.)
+    corner = client.post("/evidence", json=square(28.0011, 45.4011, d=0.0003)).json()
+    assert corner["ground"] == none and corner["plot"]["n_pixels"] == 1
+
+    monkeypatch.setattr(main, "GROUND_PATH", layers / "missing.tif")
+    assert client.post("/evidence", json=LEFT).status_code == 503
+
+
+def test_plot(layers):
+    def expected_ha(lat, d):
+        """A d x d degree square's area from the length of a degree on the WGS84 ellipsoid at its mid latitude."""
+        f = math.radians(lat + d / 2)
+        m_per_deg_lat = 111132.92 - 559.82 * math.cos(2 * f) + 1.175 * math.cos(4 * f)
+        m_per_deg_lon = 111412.84 * math.cos(f) - 93.5 * math.cos(3 * f)
+        return m_per_deg_lat * d * m_per_deg_lon * d / 10_000
+
+    big = client.post("/evidence", json=square(28.0002, 45.4002, d=0.0045)).json()["plot"]  # 5x5 px of the flood grid
+    assert big["n_pixels"] == 25 and big["area_ha"] == pytest.approx(expected_ha(45.4002, 0.0045), abs=0.01)
+    small = client.post("/evidence", json=square(28.0032, 45.4012, d=0.0026)).json()["plot"]  # 3x3 px
+    assert small["n_pixels"] == 9 and small["area_ha"] == pytest.approx(expected_ha(45.4012, 0.0026), abs=0.01)
+
+    # A hole is not part of the plot: the area drops by the hole's area.
+    ring = square(28.0002, 45.4002, d=0.0045)["coordinates"][0]
+    hole = square(28.002, 45.402, d=0.001)["coordinates"][0]
+    holed = client.post("/evidence", json={"type": "Polygon", "coordinates": [ring, hole]}).json()["plot"]
+    assert holed["area_ha"] == pytest.approx(big["area_ha"] - expected_ha(45.402, 0.001), abs=0.01)

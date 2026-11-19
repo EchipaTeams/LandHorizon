@@ -1,8 +1,8 @@
 """LandHorizon API.
 
-/evidence returns real terrain (HAND) and real flood history (Copernicus GFM) for the plot;
-plot, ground and overall are still a fixed mock, so the frontend can build against the
-whole contract before every layer is real.
+/evidence returns, for the plot: real terrain (HAND), real flood history (Copernicus GFM), real
+ground motion (EGMS) and the plot's real size. overall is still a fixed mock: its format waits
+for the customer interviews.
 """
 import os
 from datetime import date, timedelta
@@ -13,13 +13,14 @@ import numpy as np
 import rasterio
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from rasterio.mask import mask
+from rasterio.mask import mask, raster_geometry_mask
 from rasterio.warp import transform_geom
 
 app = FastAPI(title="LandHorizon API", version="0.1")
 PROCESSED = Path(__file__).resolve().parents[1] / "data" / "processed"
 HAND_PATH = Path(os.environ.get("HAND_PATH", PROCESSED / "hand.tif"))
 FLOOD_PATH = Path(os.environ.get("FLOOD_PATH", PROCESSED / "flood_gfm.tif"))  # from pipeline/flood_gfm.py
+GROUND_PATH = Path(os.environ.get("GROUND_PATH", PROCESSED / "ground.tif"))  # from pipeline/ground.py
 # A pass counts as a flood date for the plot when it saw water on at least this share of the plot's
 # observed pixels. Needs review: it keeps one stray wet pixel from becoming a "flood".
 FLOOD_DATE_MIN_SHARE = 0.05
@@ -90,16 +91,19 @@ MOCK = Evidence(
 )
 
 
-def read_plot(path: Path, polygon: Polygon, missing_hint: str):
-    """The raster's pixels under the plot as a masked array (bands, rows, cols), its band descriptions and tags."""
+def read_plot(path: Path, polygon: Polygon, missing_hint: str, all_touched: bool = True):
+    """The raster's pixels under the plot as a masked array (bands, rows, cols), its band descriptions and tags.
+
+    all_touched=True: a small plot still gets every pixel it touches (right for the 10-30 m layers).
+    all_touched=False: a pixel counts only if its centre is inside the plot (the rule for the 100 m EGMS cells).
+    """
     if not path.exists():  # a broken server, not a satellite gap: fail loudly instead of saying "unknown"
         raise HTTPException(503, f"Layer missing at {path}; {missing_hint}")
     with rasterio.open(path) as src:
         geom = transform_geom("EPSG:4326", src.crs, polygon.model_dump())
         try:
             # filled=False: pixels outside the plot come back masked, not as 0 (0 is a real value).
-            # all_touched=True: a small plot still gets every pixel it touches.
-            data, _ = mask(src, [geom], crop=True, all_touched=True, filled=False)
+            data, _ = mask(src, [geom], crop=True, all_touched=all_touched, filled=False)
         except ValueError as e:
             if "do not overlap" not in str(e):
                 raise
@@ -139,7 +143,46 @@ def terrain(polygon: Polygon) -> Terrain:
     return Terrain(status="measured", hand_m=round(float(np.median(values)), 1))
 
 
+def ground(polygon: Polygon) -> Ground:
+    """Median EGMS vertical velocity of the cells whose centre is inside the plot. No cell -> unknown, never 0.
+
+    The same rule as pipeline/ground.py --plots. Counting every 100 m cell a plot merely touches would
+    give a 0.5 ha plot the motion of a building next to it.
+    """
+    data, _, tags = read_plot(GROUND_PATH, polygon, "run pipeline/ground.py", all_touched=False)
+    values = data.compressed()
+    values = values[~np.isnan(values)]
+    release = tags["RELEASE"]  # written by ground.py from the EGMS file names, e.g. "2020-2025"
+    if values.size == 0:
+        return Ground(status="unknown", velocity_mm_yr=None, n_cells=0, release=release)
+    return Ground(status="measured", velocity_mm_yr=round(float(np.median(values)), 1),
+                  n_cells=int(values.size), release=release)
+
+
+def ring_area(ring) -> float:
+    """Shoelace area of one ring, in the units of its coordinates squared."""
+    x, y = np.array(ring, dtype=float).T
+    return abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1))) / 2
+
+
+def plot(polygon: Polygon) -> Plot:
+    """The plot's size: its area, and how many pixels of the flood grid it covers.
+
+    Call it after flood(), which answers 503 / 422 when the flood layer is missing or the plot is outside it.
+    """
+    # Area in ETRS89-LAEA (EPSG:3035), an equal-area projection, as pipeline/ground.py does. Holes are subtracted.
+    outer, *holes = transform_geom("EPSG:4326", "EPSG:3035", polygon.model_dump())["coordinates"]
+    area_m2 = ring_area(outer) - sum(ring_area(h) for h in holes)
+    # n_pixels, proposed reading (needs the lead's review): the pixels of the flood grid (10 m) the plot
+    # touches. These are the pixels flood.observed_fraction is a share of. Only the grid is used, no pixel is read.
+    with rasterio.open(FLOOD_PATH) as src:
+        outside, _, _ = raster_geometry_mask(src, [transform_geom("EPSG:4326", src.crs, polygon.model_dump())],
+                                             crop=True, all_touched=True)
+    return Plot(area_ha=round(area_m2 / 10_000, 2), n_pixels=int((~outside).sum()))
+
+
 @app.post("/evidence")
 def evidence(polygon: Polygon) -> Evidence:
-    # Terrain and flood are real; plot, ground and overall are still the mock.
-    return MOCK.model_copy(update={"terrain": terrain(polygon), "flood": flood(polygon)})
+    # Everything is read under the plot except overall, which is still the mock.
+    layers = {"terrain": terrain(polygon), "flood": flood(polygon), "ground": ground(polygon)}
+    return MOCK.model_copy(update={**layers, "plot": plot(polygon)})
