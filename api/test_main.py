@@ -59,10 +59,26 @@ def test_terrain(layers, monkeypatch):
     assert client.post("/evidence", json=LEFT).json()["terrain"] == {"status": "measured", "hand_m": 2.0}
     assert client.post("/evidence", json=RIGHT).json()["terrain"] == {"status": "unknown", "hand_m": None}
 
+    # The share rule: 3x3 px plots across the data/no-data edge (HAND has data in columns 0-4).
+    mostly = client.post("/evidence", json=square(28.0032, 45.4012, d=0.0026)).json()["terrain"]  # 2 of 3 columns
+    assert mostly == {"status": "measured", "hand_m": 2.0}
+    barely = client.post("/evidence", json=square(28.0042, 45.4012, d=0.0026)).json()["terrain"]  # 1 of 3 columns
+    assert barely == {"status": "unknown", "hand_m": None}  # a median from one corner doesn't describe the plot
+
     assert client.post("/evidence", json=square(45.401, 28.001)).status_code == 422  # lat/lon swapped
 
     monkeypatch.setattr(main, "HAND_PATH", layers / "missing.tif")
     assert client.post("/evidence", json=LEFT).status_code == 503
+
+
+def test_plot_across_the_edge_is_refused(layers):
+    # Half of this plot is east of the test raster (it ends at lon 28.01). Answering from the half inside
+    # would describe a different plot, so it is refused, as a plot wholly outside is.
+    across = client.post("/evidence", json=square(28.0095, 45.401))
+    assert across.status_code == 422
+    assert "partly or fully outside the covered area (hand.tif)" in across.json()["detail"]
+    # Just inside the north-east corner (0.0001°, about 8 m, from both edges): answered.
+    assert client.post("/evidence", json=square(28.0089, 45.4089)).status_code == 200
 
 
 def test_flood(layers, monkeypatch):
