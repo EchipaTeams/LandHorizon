@@ -13,7 +13,8 @@ import numpy as np
 import rasterio
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from rasterio.mask import mask, raster_geometry_mask
+from rasterio.features import bounds
+from rasterio.mask import raster_geometry_mask
 from rasterio.warp import transform_geom
 
 app = FastAPI(title="LandHorizon API", version="0.1")
@@ -27,6 +28,9 @@ FLOOD_DATE_MIN_SHARE = 0.05
 # Below this share of the plot observed, flood is "unknown": what a satellite saw on one corner doesn't
 # describe the plot. Needs review: 0.5 is a judgment call, to be checked on the 20 test plots.
 MIN_OBSERVED_FRACTION = 0.5
+# Below this share of the plot's pixels with HAND data, terrain is "unknown": a median from one corner doesn't
+# describe the plot. Needs review: 0.5 mirrors MIN_OBSERVED_FRACTION, to be checked on the 20 test plots.
+TERRAIN_MIN_SHARE = 0.5
 
 Status = Literal["measured", "unknown"]
 Ring = Annotated[list[tuple[float, float]], Field(min_length=4)]  # closed ring: first point == last
@@ -103,14 +107,19 @@ def read_plot(path: Path, polygon: Polygon, missing_hint: str, all_touched: bool
         raise HTTPException(503, f"Layer missing at {path}; {missing_hint}")
     with rasterio.open(path) as src:
         geom = transform_geom("EPSG:4326", src.crs, polygon.model_dump())
-        try:
-            # filled=False: pixels outside the plot come back masked, not as 0 (0 is a real value).
-            data, _ = mask(src, [geom], crop=True, all_touched=all_touched, filled=False)
-        except ValueError as e:
-            if "do not overlap" not in str(e):
-                raise
-            raise HTTPException(422, "Plot is outside the covered area.") from e
-        return data, src.descriptions, src.tags()
+        # mask() only fails when the plot misses the raster entirely; a plot across its edge would be answered
+        # from the part inside, and nothing would say so. Each layer is a rectangle in its own CRS, so comparing
+        # the plot's bounds with the raster's is exact.
+        left, bottom, right, top = bounds(geom)
+        b = src.bounds
+        if left < b.left or bottom < b.bottom or right > b.right or top > b.top:
+            raise HTTPException(422, f"Plot is partly or fully outside the covered area ({path.name}); "
+                                     f"draw it inside the area of interest.")
+        # Only pixels outside the plot are masked, not filled with 0 (0 is a real value). Unlike mask(), no-data
+        # pixels inside the plot stay unmasked (NaN), so a layer can tell how much of the plot has data.
+        outside, _, window = raster_geometry_mask(src, [geom], crop=True, all_touched=all_touched)
+        data = src.read(window=window)
+        return np.ma.masked_array(data, np.broadcast_to(outside, data.shape).copy()), src.descriptions, src.tags()
 
 
 def flood(polygon: Polygon) -> Flood:
@@ -136,11 +145,11 @@ def flood(polygon: Polygon) -> Flood:
 
 
 def terrain(polygon: Polygon) -> Terrain:
-    """Median HAND under the plot. No pixels with data -> unknown, never a guess."""
+    """Median HAND under the plot. Less than TERRAIN_MIN_SHARE of the plot with data -> unknown, never a guess."""
     data, _, _ = read_plot(HAND_PATH, polygon, "run pipeline/hand.py")
-    values = data.compressed()
-    values = values[~np.isnan(values)]
-    if values.size == 0:
+    inside = data.compressed()  # the plot's pixels
+    values = inside[~np.isnan(inside)]
+    if values.size == 0 or values.size / inside.size < TERRAIN_MIN_SHARE:
         return Terrain(status="unknown", hand_m=None)
     return Terrain(status="measured", hand_m=round(float(np.median(values)), 1))
 
@@ -170,7 +179,7 @@ def ring_area(ring) -> float:
 def plot(polygon: Polygon) -> Plot:
     """The plot's size: its area, and how many pixels of the flood grid it covers.
 
-    Call it after flood(), which answers 503 / 422 when the flood layer is missing or the plot is outside it.
+    Call it after flood(), which answers 503 / 422 when the flood layer is missing or the plot isn't fully inside it.
     """
     # Area in ETRS89-LAEA (EPSG:3035), an equal-area projection, as pipeline/ground.py does. Holes are subtracted.
     outer, *holes = transform_geom("EPSG:4326", "EPSG:3035", polygon.model_dump())["coordinates"]
