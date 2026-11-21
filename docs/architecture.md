@@ -84,6 +84,12 @@ The JSON `POST /evidence` returns is the contract between backend and frontend. 
 - `area_ha`: the polygon's area in hectares, to 0.01, computed in EPSG:3035 (equal-area), holes subtracted.
 - `n_pixels` (reading accepted by the lead on 19 Nov 2026): the pixels of the flood grid (10 m) the plot touches, the ones `flood.observed_fraction` is a share of. It tells how many flood measurements fit on the plot. Because a touched pixel counts whole, it is more than `area_ha` × 100: 89 for the 0.60 ha test plot `flood-pechea-1`. The docs didn't define it before; the mock (0.8 ha, 80 px) fits a 10 m grid.
 
+**Terrain fields** (from `hand.tif`; the shape of the model didn't change):
+- `hand_m`: median HAND (height above the nearest drainage) of the plot's pixels with data, in m, to 0.1. Every pixel the plot touches counts, as for flood.
+- `status`: `unknown`, with `hand_m` `null`, when less than half of the plot's pixels have HAND data (`TERRAIN_MIN_SHARE`, 0.5, in `api/main.py`). Until 20 Nov 2026 one pixel with data was enough, so a plot with data on one corner got that corner's height. The 0.5 mirrors flood's `MIN_OBSERVED_FRACTION` and needs review. `hand.tif` has data on the whole AOI today, so none of the 20 test plots changes. Proposed 20 Nov 2026: a change in what the API answers, for the lead to review.
+
+**A plot not wholly inside every layer is refused** (proposed 20 Nov 2026, for the lead to review): `POST /evidence` answers 422 when any part of the plot is outside a layer's raster, with a message naming the layer. Before, only a plot wholly outside was refused. A plot across the edge was answered from the part inside, and nothing said so: its `flood.observed_fraction` and `plot.n_pixels` counted only that part. The check compares the plot's bounds with each raster's bounds in the raster's own CRS, before any pixel is read. `hand.tif` covers exactly the AOI and the other layers reach a little beyond it, so in practice the AOI's edge decides. The closest of the 20 test plots is about 1.2 km inside it.
+
 Rules:
 - Every layer carries a `status` (`measured` / `unknown`) and how much data sits behind it (`n_passes`, `n_cells`, ...).
 - A plot with no data must come out as unknown, never as low or medium.
