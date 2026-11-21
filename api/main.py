@@ -29,7 +29,7 @@ FLOOD_DATE_MIN_SHARE = 0.05
 # describe the plot. Needs review: 0.5 is a judgment call, to be checked on the 20 test plots.
 MIN_OBSERVED_FRACTION = 0.5
 # Below this share of the plot's pixels with HAND data, terrain is "unknown": a median from one corner doesn't
-# describe the plot. Needs review: 0.5 mirrors MIN_OBSERVED_FRACTION, to be checked on the 20 test plots.
+# describe the plot. 0.5 mirrors MIN_OBSERVED_FRACTION; accepted by the lead on 21 Nov 2026.
 TERRAIN_MIN_SHARE = 0.5
 
 Status = Literal["measured", "unknown"]
