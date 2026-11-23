@@ -39,7 +39,7 @@ Settings: VV < −18 dB, more than 3 dB below baseline, JRC occurrence ≤ 80 %,
 Flag rate at ≥1 pass is 61–73 % inside the EMS outlines and 11 % outside them. The signal is real but buried in false alarms. These cluster on farmland parcels, which fits harvested or bare fields compared with a summer baseline.
 
 ## Tuning runs
-Dry window: 12–25 Sept 2023. Event window: 12–25 Sept 2024, scored against PRODUCT. All runs use `flood.py --evaluate`.
+Dry window: 12–25 Sept 2023. Event window: 12–25 Sept 2024, scored against PRODUCT. All runs use `flood_earthengine.py --evaluate`.
 
 | Run | Change | Dry flagged ≥1 | Event recall ≥1 | Event precision ≥1 |
 |---|---|---|---|---|
