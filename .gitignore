@@ -26,6 +26,11 @@ data/processed/
 *.csv.gz
 !data/sample/**
 aim-space/
+# Research lives in the swiftyhuh/rospin repo (landhorizon-research/), not here
+docs/research/
+# Check results and crash dumps stay local
+checks/*/run*/
+*.stackdump
 
 # Editor / OS
 .idea/

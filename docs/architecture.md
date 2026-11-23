@@ -147,6 +147,7 @@ LandHorizon/
 │   └── sample/                  small files, committed: plots.geojson (the 20 test plots); small COGs (planned)
 ├── docs/
 │   ├── architecture.md          this file
+│   ├── evidence-request.md      how the website sends a plot to POST /evidence and handles the answers
 │   └── flood-validation.md      flood test runs and their results
 ├── docker-compose.yml           (planned, W4) API + web for the deployment
 ├── pyproject.toml               Python dependencies (uv)
