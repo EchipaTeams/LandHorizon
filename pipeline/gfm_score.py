@@ -79,6 +79,12 @@ def _rings(geom):
     return geom["coordinates"] if geom["type"] == "Polygon" else [r for poly in geom["coordinates"] for r in poly]
 
 
+def missing_file(err):
+    """The server says the file doesn't exist. A bare "404" isn't enough: errors can quote the file name,
+    and names hold dates (20240430)."""
+    return "HTTP response code: 404" in str(err)
+
+
 def read(href, attempts=10):
     """One GFM layer warped onto our AOI grid (nearest neighbour; 20 m -> 10 m).
 
@@ -94,7 +100,7 @@ def read(href, attempts=10):
             with rasterio.Env(**env), rasterio.open(href) as src:
                 return to_grid(src)
         except (rasterio.errors.RasterioError, CPLE_BaseError, OSError) as e:  # GDAL's HTTP errors are CPLE_*
-            if attempt == attempts or "404" in str(e):  # a missing file won't come back: see read_asset
+            if attempt == attempts or missing_file(e):  # a missing file won't come back: see read_asset
                 raise
             print(f"  read failed ({str(e)[:80]}), retry {attempt}/{attempts - 1}", flush=True)
             time.sleep(min(15 * attempt, 60))  # ~8 min of patience in total for a slow patch
@@ -108,7 +114,7 @@ def read_asset(item, key):
     try:
         return read(href)
     except (rasterio.errors.RasterioError, CPLE_BaseError, OSError) as e:
-        if "404" not in str(e):
+        if not missing_file(e):
             raise
         fresh = get_json(f"{STAC}/{item['id']}")
         if fresh["assets"][key]["href"] == href:
@@ -139,7 +145,7 @@ def passes(feats, verbose=False, skip=()):
             try:
                 v = read_asset(f, "advisory_flags")
             except (rasterio.errors.RasterioError, CPLE_BaseError, OSError, KeyError) as err:
-                if not isinstance(err, KeyError) and "404" not in str(err):
+                if not isinstance(err, KeyError) and not missing_file(err):
                     raise
                 v = np.zeros_like(a)  # older archive passes (e.g. 2018) have no advisory layer: no warnings
                 if verbose:
