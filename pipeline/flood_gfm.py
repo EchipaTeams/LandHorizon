@@ -79,7 +79,7 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     with rasterio.open(tmp, "w", driver="GTiff", dtype="uint16", count=2 + len(flood_bands), crs=CRS,
                        transform=transform, width=width, height=height, compress="deflate", tiled=True,
-                       BIGTIFF="IF_SAFER") as dst:
+                       interleave="band", BIGTIFF="IF_SAFER") as dst:  # pixel (the default) rewrites every band per band
         dst.write(n_flooded, 1)
         dst.write(n_passes, 2)
         for i, (_, idx) in enumerate(flood_bands, start=3):
@@ -89,7 +89,7 @@ def main():
         dst.descriptions = ("n_flooded", "n_passes", *(key for key, _ in flood_bands))
         dst.update_tags(source="Copernicus GFM ensemble flood extent + exclusion mask",
                         period_start=a.start.isoformat(), period_end=a.end.isoformat())
-    rio_copy(tmp, PATH, driver="COG", compress="deflate", BIGTIFF="IF_SAFER")
+    rio_copy(tmp, PATH, driver="COG", compress="deflate", interleave="band", BIGTIFF="IF_SAFER")
     tmp.unlink()
     checkpoint.unlink(missing_ok=True)
     seen = n_passes > 0
