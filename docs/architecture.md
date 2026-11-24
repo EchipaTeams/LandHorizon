@@ -193,7 +193,7 @@ About 20 realistic plots around Galați, mostly non-urban, at three sizes (under
   - **Spring dry window 20 Apr–5 May 2024** (added 10 Nov 2026 on the lead's review, before running it): at most **1 %** of land pixels flagged in ≥1 pass, same land definition as above. Reason: the September window can't catch spring false alarms on freshly tilled fields. Command: `gfm_score.py 2024-04-20 2024-05-06` (end exclusive). If it fails, the method isn't changed silently; how the report shows dates outside a verified event is decided with the lead.
   - **Spring window on GFM v4, 20 Apr–5 May 2025** (added 24 Nov 2026, before running it): same false-alarm limit and land definition, at most **1 %** of land pixels flagged in ≥1 pass. It asks whether the spring 2024 false alarm repeats in v4; it can't validate v4 (no v4 flood with a reference outline is known), and the history stops before v4, so nothing in it depends on the result. Command: `gfm_score.py 2025-04-20 2025-05-06` (end exclusive).
     - **Dryness check, before the run:** no flood on record in Galați County, and a clear Sentinel-2 image checked by eye.
-    - **Dry, above 1 %:** the false alarm repeats in v4.
+    - **Dry, above 1 %:** v4 fails the spring test too. It's put down to tilled fields only if the Sentinel-2 images show bare fields where the flags are; otherwise the cause is unknown (v4 also keeps small patches that v3 removed).
     - **Dry, 1 % or less:** it didn't repeat in this window. That doesn't show v4 fixed it: the year, the fields and the soil moisture differ, and there is no v3 run of 2025 to compare with.
     - **Not dry, or the check can't be done:** inconclusive, whatever the percentage.
     - The method isn't changed on this result.
