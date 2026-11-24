@@ -13,11 +13,16 @@ Writes data/processed/flood_gfm.tif on the AOI grid (UTM 35N, 10 m):
   band 2  n_passes    passes that could see the pixel (0 = never seen: "unknown", never "dry")
   band 3+ one band per pass that saw any flood in the AOI: 1 = flood on that pixel, else 0.
           The band description is the pass time (e.g. 2024-09-14T04), which gives the API its flood dates.
-The period goes into the file's tags, so the API can say what it covers.
+The period goes into the file's tags, so the API can say what it covers. The history stops at a change of
+GFM's major version (decision 1b: such layers can't be used together), and period_end then says so. The tag
+gfm_versions records, per pass, the GFM version and the algorithms that contributed to all its scenes.
 Contains modified Copernicus Emergency Management Service information.
 """
 import argparse
+import json
+import re
 import sys
+from collections import defaultdict
 from datetime import date
 
 import numpy as np
@@ -28,6 +33,35 @@ from flood_common import CRS, OUT, grid
 from gfm_score import items, passes
 
 PATH = OUT / "flood_gfm.tif"
+
+
+def major(feat):
+    """GFM major version of a scene; the catalogue writes it as 'GFM v3.1.0' or 'v4.0.0'."""
+    version = feat["properties"].get("processing:version")
+    match = re.search(r"v(\d+)\.", version or "")
+    if not match:
+        raise ValueError(f"{feat['id']}: no readable GFM version ({version!r})")
+    return int(match[1])
+
+
+def before_version_change(feats):
+    """(scenes before the first day GFM's major version changes, that day), or (all scenes, None)."""
+    feats = sorted(feats, key=lambda f: f["properties"]["datetime"])
+    first, *rest = [major(f) for f in feats]
+    change = next((f["properties"]["datetime"][:10] for f, m in zip(feats[1:], rest) if m != first), None)
+    return [f for f in feats if change is None or f["properties"]["datetime"] < change], change
+
+
+def versions(feats):
+    """Per pass key: [GFM version(s), algorithms that contributed to all its scenes], from the catalogue."""
+    found, members = defaultdict(set), {}
+    for f in feats:
+        p = f["properties"]
+        key = p["datetime"][:13]
+        found[key].add(p["processing:version"])
+        on = {m for m, used in p.get("flood_members", {}).items() if used}
+        members[key] = members.get(key, on) & on
+    return {k: [", ".join(sorted(v)), " ".join(sorted(members[k]))] for k, v in sorted(found.items())}
 
 
 def load_checkpoint(path, shape):
@@ -59,10 +93,17 @@ def main():
     feats = items(a.start, a.end)
     if not feats:
         sys.exit(f"No GFM items over the AOI in {a.start}..{a.end}.")
-    print(f"GFM {a.start}..{a.end}: {len(feats)} items", flush=True)
+    feats, change = before_version_change(feats)
+    end = change or a.end.isoformat()
+    if change:
+        print(f"GFM's major version changes on {change}: the history stops before that day", flush=True)
+    if not feats:
+        sys.exit(f"No GFM items left before {change}.")
+    print(f"GFM {a.start}..{end}: {len(feats)} items", flush=True)
 
     transform, width, height = grid()
-    checkpoint = OUT / f"flood_gfm_{a.start}_{a.end}.checkpoint.npz"
+    # "1a" keeps a checkpoint from before that decision (missing advisory layer = no warnings) from being resumed
+    checkpoint = OUT / f"flood_gfm_1a_{a.start}_{end}.checkpoint.npz"
     n_flooded, n_passes, flood_bands, done = load_checkpoint(checkpoint, (height, width))
     if done:
         print(f"resuming from {checkpoint.name}: {len(done)} passes already done", flush=True)
@@ -88,7 +129,8 @@ def main():
             dst.write(band, i)
         dst.descriptions = ("n_flooded", "n_passes", *(key for key, _ in flood_bands))
         dst.update_tags(source="Copernicus GFM ensemble flood extent + exclusion mask",
-                        period_start=a.start.isoformat(), period_end=a.end.isoformat())
+                        period_start=a.start.isoformat(), period_end=end,
+                        gfm_versions=json.dumps(versions(feats), separators=(",", ":")))
     rio_copy(tmp, PATH, driver="COG", compress="deflate", interleave="band", BIGTIFF="IF_SAFER")
     tmp.unlink()
     checkpoint.unlink(missing_ok=True)
