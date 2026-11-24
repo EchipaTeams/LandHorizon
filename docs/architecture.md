@@ -191,6 +191,12 @@ About 20 realistic plots around Galați, mostly non-urban, at three sizes (under
   - **Sept 2024 event (12–25 Sept) vs Copernicus EMSR758 AOI03 (Pechea), PRODUCT v1 outline:** recall at ≥1 pass stays **at least 50 %**, so the method can't pass by flagging nothing.
   - **Why 1 %:** it was expected to give about 50 % precision on that event; the measured precision is 22–27 %. Over 10 years per-pass noise still adds up, so the *events* decision below still has to filter single-pass flags.
   - **Spring dry window 20 Apr–5 May 2024** (added 10 Nov 2026 on the lead's review, before running it): at most **1 %** of land pixels flagged in ≥1 pass, same land definition as above. Reason: the September window can't catch spring false alarms on freshly tilled fields. Command: `gfm_score.py 2024-04-20 2024-05-06` (end exclusive). If it fails, the method isn't changed silently; how the report shows dates outside a verified event is decided with the lead.
+  - **Spring window on GFM v4, 20 Apr–5 May 2025** (added 24 Nov 2026, before running it): same false-alarm limit and land definition, at most **1 %** of land pixels flagged in ≥1 pass. It asks whether the spring 2024 false alarm repeats in v4; it can't validate v4 (no v4 flood with a reference outline is known), and the history stops before v4, so nothing in it depends on the result. Command: `gfm_score.py 2025-04-20 2025-05-06` (end exclusive).
+    - **Dryness check, before the run:** no flood on record in Galați County, and a clear Sentinel-2 image checked by eye.
+    - **Dry, above 1 %:** the false alarm repeats in v4.
+    - **Dry, 1 % or less:** it didn't repeat in this window. That doesn't show v4 fixed it: the year, the fields and the soil moisture differ, and there is no v3 run of 2025 to compare with.
+    - **Not dry, or the check can't be done:** inconclusive, whatever the percentage.
+    - The method isn't changed on this result.
   - Runs and results are logged in [flood-validation.md](flood-validation.md).
   - **10 Nov 2026: passed with v0.2.** The dry rate is 0.92 % and recall is 50.7 %; precision is about 22 %. The margin is thin and comes from 40 configurations tuned on one event, so it is not yet confirmed.
   - **10 Nov 2026: GFM passed the two September criteria without any tuning.** Dry rate 0.09 %, recall 54.7 % (counting flood GFM can't see as missed), precision 27 %. A second event, Botoșani July 2018 (EMSR293, outline from COSMO-SkyMed, an independent radar), gave recall 57–66 % and precision 97–99 %.
