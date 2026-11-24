@@ -50,4 +50,4 @@ set -a; source .env; set +a
 uv run python pipeline/flood_local.py --event 2024-09-12 2024-09-25
 ```
 
-Contains modified Copernicus Sentinel data, processed with ESA SNAP, and modified Copernicus Emergency Management Service information (GFM).
+Contains modified Copernicus Sentinel data, processed with ESA SNAP, and modified Copernicus Emergency Management Service information (GFM). Permanent water: JRC Global Surface Water v1.4 (Pekel et al., 2016, Nature 540, 418–422, [doi:10.1038/nature20584](https://doi.org/10.1038/nature20584)). Source: EC JRC/Google.
