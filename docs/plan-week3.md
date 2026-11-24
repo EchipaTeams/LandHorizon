@@ -25,12 +25,12 @@ F1 is the week's bottleneck: everything else on flood waits for it, so it should
 | F6 | With the new `flood_gfm.tif`: run `api/test_plots.py`, check `period_end` reads 2025-04-13, update the 20-plot flood numbers in the docs | Sun 29 | F3 |
 
 ## Ground: Alex, Miriam
-G3 is the hardest item and changes the contract. G4 isn't ground work, but this team has the capacity: start it on Monday, since G1 waits for the threshold on Tuesday.
+G3 is the hardest item and changes the contract. G4 isn't ground work, but this team has the capacity: G1 is in review (PR #11), so G4 comes next.
 
 | # | Work to do | Due | Waits on |
 |---|---|---|---|
-| G1 | Ground share rule: cells with data ÷ cells whose centre fits in the plot, unknown below the threshold. Tests and `architecture.md` (open decision "Ground on a single cell"). Contract shape unchanged | Fri 27 | L3 |
-| G2 | Re-run `ground.py --plots`, confirm `edge-50` and `edge-65` stay measured, update the data-test table | Fri 27 | G1 |
+| G1 | **Done** (PR #11, 23 Nov): ground share rule (cells with data ÷ cells whose centre fits in the plot, `GROUND_MIN_SHARE` 0.5), test and `architecture.md`. **Left:** `api/test_plots.py:69` still asserts unknown ⇔ 0 cells, so make it unknown ⇔ no velocity, and measured ⇒ `n_cells` > 0; then follow L3 (switch the denominator if the area rule wins, mark 0.5 accepted) | Fri 27 | L3 |
+| G2 | **Done** (PR #11): checked on the real `ground.tif` that `edge-50` (1 of 2 cells) and `edge-65` (4 of 8) stay measured and the other 18 stay unknown. **Left:** say so in the data-test table (`architecture.md`, "Cells per plot") | Fri 27 | G1 |
 | G3 | Cropland share field: cut WorldCover 2021 to the flood grid (reuse `checks/cropland_share/cropland_share.py`), compute the cropland share of the plot's flagged pixels in the API. `null` when nothing is flagged, flood is unknown or WorldCover has no data. Tests, `architecture.md`, PR marked as a contract change | Sat 28 | L4 |
 | G4 | Deploy the API: Dockerfile and `docker-compose.yml` (COGs from a volume), a public URL, and a reverse proxy so the website and `/evidence` share one domain ([evidence-request.md](evidence-request.md#deployment-not-decided-yet)). Move docker-compose from W4 to now in `architecture.md` | Fri 27 | — |
 
@@ -51,7 +51,7 @@ Tuesday's decisions unblock Ground (L3, L4) and the scoring (L6), so they come f
 |---|---|---|---|
 | L1 | Commit the local cleanup: drop `pystac-client` from `pyproject.toml` and `uv.lock`, move `pipeline/check_gfm.py` to `checks/`, gitignore `checks/*/run*/` and `*.stackdump` | Mon 23 | — |
 | L2 | Write the gate outcomes (segment, score format, provisional law option), lock Galați, fill in milestone 3–4 status in `architecture.md` | Tue 24 | B1 |
-| L3 | Set the ground share threshold (0.5 proposed in PR #9) | Tue 24 | — |
+| L3 | Set the ground share threshold (0.5 proposed in PR #9) and its denominator: PR #11 divides by the cells whose centre fits in the plot, `DECISIONS.md` #5 by max(1, round(`area_ha`)) | Tue 24 | — |
 | L4 | Agree the cropland field's name and type with Ground and Website | Tue 24 | — |
 | L5 | Send the GFM helpdesk email (draft in `docs/research/briefs/4-emails.md`) | Tue 24 | — |
 | L6 | Decide the `overall` score format from the gate | Wed 25 | L2 |
