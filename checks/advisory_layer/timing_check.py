@@ -3,7 +3,7 @@
 Takes 20 scenes advisory_check.py already read at 20 m (10 that saw ~59 % of the AOI, 10 that saw 0 %),
 times the coarse read, and checks the coarse seen share against the 20 m one in flood.csv.
 
-  uv run --frozen python -u checks/advisory_layer/timing_test.py
+  uv run --frozen python -u checks/advisory_layer/timing_check.py
 """
 import csv
 import json
