@@ -163,7 +163,7 @@ Building the 2024 history (`flood_gfm.py`) showed 17 % of the seen AOI flagged a
 - **Fix:** pixels under an advisory flag now count as **not seen** for that pass, as GFM's manual advises ("use with caution").
 - **Effect on validation:**
   - dry window 0.09 %, Galați recall 58.0 % / precision 27.1 %, Botoșani 96.7 % / 67.6 % (2 July) and 99.3 % / 58.5 % (3 July)
-  - the advisory layer is missing for 2 of the 31 passes from 2018; those count as having no warnings
+  - the advisory layer is missing for 2 of the 31 passes from 2018; those counted as having no warnings when these numbers were made (not seen since decision 1a, 25 Nov 2026)
 - **What's left:** most of the false alarm carried no advisory flag, so it remains. Removing it would need an optical cross-check (e.g. Sentinel-2 NDWI), which isn't built.
 - **2024 history after the fix:**
 
@@ -237,28 +237,27 @@ The fix above treats pixels under a GFM advisory flag as not seen. The lead aske
 - **Scenes:** every GFM scene over the AOI per year, 2015–2025, from the EODC catalogue.
 - **The check:** a request for each scene's `advisory_flags` file.
 - **Moved files:** a missing file was looked up again in the catalogue, in case EODC had moved it.
-- **"Couldn't tell":** the server didn't answer after retries.
-- **Run on:** 10–11 Nov 2026 (one-off script, not in the repo).
+- **Run on:** 25 Nov 2026 with `has_advisory()` from `checks/advisory_layer/advisory_check.py`. It replaces a first scan of 10–11 Nov, which found 198 and couldn't tell for 27. 219 of the 224 are inside the history (2015 – 13 Apr 2025).
 
-| Year | Passes | No advisory layer | Share | Couldn't tell |
-|---|---|---|---|---|
-| 2015 | 388 | 6 | 1.5 % | 0 |
-| 2016 | 683 | 9 | 1.3 % | 2 |
-| 2017 | 1,081 | 13 | 1.2 % | 1 |
-| 2018 | 1,086 | 45 | 4.1 % | 9 |
-| 2019 | 1,094 | 62 | 5.7 % | 6 |
-| 2020 | 1,136 | 34 | 3.0 % | 9 |
-| 2021 | 1,131 | 24 | 2.1 % | 0 |
-| 2022 | 616 | 0 | 0 % | 0 |
-| 2023 | 516 | 0 | 0 % | 0 |
-| 2024 | 630 | 0 | 0 % | 0 |
-| 2025 | 741 | 5 | 0.7 % | 0 |
-| **Total** | **9,102** | **198** | **2.2 %** | **27** |
+| Year | Scenes | No advisory layer | Share |
+|---|---|---|---|
+| 2015 | 388 | 6 | 1.5 % |
+| 2016 | 683 | 11 | 1.6 % |
+| 2017 | 1,081 | 14 | 1.3 % |
+| 2018 | 1,086 | 54 | 5.0 % |
+| 2019 | 1,094 | 68 | 6.2 % |
+| 2020 | 1,136 | 42 | 3.7 % |
+| 2021 | 1,131 | 24 | 2.1 % |
+| 2022 | 616 | 0 | 0 % |
+| 2023 | 516 | 0 | 0 % |
+| 2024 | 630 | 0 | 0 % |
+| 2025 | 741 | 5 | 0.7 % |
+| **Total** | **9,102** | **224** | **2.5 %** |
 
 **Missing doesn't mean empty:**
 - **GFM publishes empty layers:** an advisory file where every pixel is 0 when nothing is flagged (2 of 8 July 2024 scenes checked).
 - **So a missing file was never produced.** The catalogue still lists `advisory_flags` for these scenes; the link just returns 404.
-- **The code is wrong here:** `gfm_score.passes()` treats a missing layer as "no warnings", but the honest reading is "**unknown** whether there were warnings".
+- **The code was wrong here** until 25 Nov 2026: `gfm_score.passes()` treated a missing layer as "no warnings", but the honest reading is "**unknown** whether there were warnings".
 
 **Pattern:**
 - **The older archive (2015–2021):** 1–6 % of passes are missing the layer.
@@ -269,6 +268,6 @@ The fix above treats pixels under a GFM advisory flag as not seen. The lead aske
 **Consequences:**
 - **The 2024 history isn't affected,** since no 2024 pass lacks the layer.
 - **A 10-year build would hit this in roughly 1 in 20–50 older passes.**
-- **Treating them as "no warnings"** (current) lets any false alarms in them through.
+- **Treating them as "no warnings"** lets any false alarms in them through.
 - **Treating them as "not seen"** is safer, but also drops real observations. At Botoșani it would remove a real flood scene and lower the recall.
-- **Which to use is a method decision for the lead.**
+- **Decided by the lead (1a, 17 Nov 2026): not seen,** per scene. In `gfm_score.passes()` since 25 Nov 2026. The scores above are from before; the re-score is still to be done.

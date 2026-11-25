@@ -87,33 +87,65 @@ def grid(paths):
 def test_plot_counts_cell_centres(grid):
     band, transform = grid
     # 60 x 60 m around the centre of cell (0, 0)
-    area, cells, median = ground.plot_cells(box(X0 + 20, Y1 - 80, X0 + 80, Y1 - 20), band, transform)
+    area, fit, cells, median = ground.plot_cells(box(X0 + 20, Y1 - 80, X0 + 80, Y1 - 20), band, transform)
     assert area == pytest.approx(0.36, abs=1e-3)
-    assert (cells, median) == (1, -2.0)
-    # centres of (0,0), (0,1), (1,0) and the empty (1,1): three cells with data
-    _, cells, median = ground.plot_cells(box(X0 + 20, Y1 - 180, X0 + 180, Y1 - 20), band, transform)
-    assert (cells, median) == (3, -2.0)
+    assert (fit, cells, median) == (1, 1, -2.0)
+    # centres of (0,0), (0,1), (1,0) and the empty (1,1): four cells fit, three have data
+    _, fit, cells, median = ground.plot_cells(box(X0 + 20, Y1 - 180, X0 + 180, Y1 - 20), band, transform)
+    assert (fit, cells, median) == (4, 3, -2.0)
+
+
+def test_plot_counts_the_cells_that_fit_and_the_ones_with_data(grid):
+    band, transform = grid
+    # centres of (0,1) = -4.0 and (0,2) = NaN: two cells fit, one has data, the median is of that one
+    _, fit, cells, median = ground.plot_cells(box(X0 + 120, Y1 - 80, X0 + 280, Y1 - 20), band, transform)
+    assert (fit, cells, median) == (2, 1, -4.0)
+    # the centre of the NaN cell (0, 2) only: a cell fits, none has data, so unknown, never 0
+    _, fit, cells, median = ground.plot_cells(box(X0 + 220, Y1 - 80, X0 + 280, Y1 - 20), band, transform)
+    assert (fit, cells, median) == (1, 0, None)
 
 
 def test_plot_on_cell_edge_counts_nothing(grid):
     band, transform = grid
-    # straddles the edge between (0,0) and (0,1) without reaching either centre
-    _, cells, median = ground.plot_cells(box(X0 + 60, Y1 - 80, X0 + 140, Y1 - 20), band, transform)
-    assert cells == 0
+    # straddles the edge between (0,0) and (0,1) without reaching either centre: no cell fits at all
+    _, fit, cells, median = ground.plot_cells(box(X0 + 60, Y1 - 80, X0 + 140, Y1 - 20), band, transform)
+    assert (fit, cells) == (0, 0)
     assert median is None
 
 
-def test_plot_without_cells_is_unknown(grid, tmp_path, capsys):
-    plots = {"type": "FeatureCollection", "features": [
-        {"type": "Feature", "properties": {"name": "no-data", "area_ha": 0.4, "size_class": "under_1_ha",
-                                           "land_cover": "grass"},
-         "geometry": box(X0 + 220, Y1 - 80, X0 + 280, Y1 - 20)}]}  # covers the centre of the NaN cell (0, 2)
+def report_rows(tmp_path, capsys, **plots):
+    """Run --plots on plots given as name=(size_class, geometry); return the printed lines."""
+    features = [{"type": "Feature", "properties": {"name": name, "area_ha": 0.4, "size_class": size_class,
+                                                   "land_cover": "grass"}, "geometry": geometry}
+                for name, (size_class, geometry) in plots.items()]
     path = tmp_path / "plots.geojson"
-    path.write_text(json.dumps(plots))
+    path.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
     ground.report_plots(path)
+    return capsys.readouterr().out.splitlines()
 
-    row = next(line for line in capsys.readouterr().out.splitlines() if line.startswith("no-data"))
-    assert row.split()[-2:] == ["0", "unknown"]  # 0 cells, and the median is unknown, never 0
+
+def test_plot_without_data_is_unknown(grid, tmp_path, capsys):
+    lines = report_rows(tmp_path, capsys, **{
+        "no-data": ("under_1_ha", box(X0 + 220, Y1 - 80, X0 + 280, Y1 - 20)),  # covers the centre of the NaN cell (0, 2)
+        "no-cell": ("under_1_ha", box(X0 + 60, Y1 - 80, X0 + 140, Y1 - 20))})  # no cell centre at all
+    row = lambda name: next(line for line in lines if line.startswith(name)).split()
+    assert row("no-data")[-5:] == ["0", "of", "1", "0%", "unknown"]  # a cell fits, it has no data
+    # no cell fits: a share of 0 of 0 is not 0 %, it is not defined
+    assert row("no-cell")[-5:] == ["0", "of", "0", "-", "unknown"]
+
+
+def test_report_shows_the_cells_that_fit_and_the_share(grid, tmp_path, capsys):
+    lines = report_rows(tmp_path, capsys, **{
+        "half": ("under_1_ha", box(X0 + 120, Y1 - 80, X0 + 280, Y1 - 20)),    # (0,1) has data, (0,2) doesn't
+        "full": ("1_to_5_ha", box(X0 + 20, Y1 - 80, X0 + 80, Y1 - 20)),       # (0,0) has data
+        "none": ("1_to_5_ha", box(X0 + 220, Y1 - 80, X0 + 280, Y1 - 20))})    # (0,2) doesn't
+    row = lambda name: next(line for line in lines if line.startswith(name)).split()
+    assert row("half")[-5:] == ["1", "of", "2", "50%", "-4.0"]
+    assert row("full")[-5:] == ["1", "of", "1", "100%", "-2.0"]
+    # per size class: 1 cell of 2 fits with data; 1 of 2 cells in total, one of the two plots has a cell with data
+    summary = {line.split()[0]: line for line in lines[lines.index("per size class:") + 1:]}
+    assert "cells that fit 2.0 per plot, with data 1.0, share 50%, plots with data 1 of 1" in summary["under_1_ha"]
+    assert "cells that fit 1.0 per plot, with data 0.5, share 50%, plots with data 1 of 2" in summary["1_to_5_ha"]
 
 
 def test_plots_without_ground_tif_stops(paths, tmp_path):

@@ -3,7 +3,7 @@
 Option B: a scene with no advisory layer counts as not seen. advisory_check.py found which scenes those
 are (run_.../scenes.json) but never counted the scenes WITH the layer that see the AOI, so B's cost had
 no denominator. Catalogue footprints can't give it (they are the whole 300 km Equi7 tile), so every
-scene's layers are read, coarsely: 640 m cells. timing_test.py showed 640 m agrees with 20 m on 20
+scene's layers are read, coarsely: 640 m cells. timing_check.py showed 640 m agrees with 20 m on 20
 scenes (58.9 % vs 58.5 % seen, 0 % vs 0 %).
 
   uv run --frozen python -u checks/advisory_layer/share_of_passes.py

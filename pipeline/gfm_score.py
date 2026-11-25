@@ -13,8 +13,8 @@ prints the same scores as `flood_local.py --evaluate`, so GFM and v0.2 can be co
   add --area-from-reference to score another region (e.g. a second EMS event) on its EMS area of interest
   add --save-passes to also keep one map per pass in data/processed/gfm_passes/<start>_<end>/ (1 flood, 0 dry, no data = not seen)
 
-Excluded pixels, and pixels under a GFM advisory flag (unreliable that pass), don't count as a pass,
-so where GFM can't see, n_passes stays 0 ("unknown").
+Excluded pixels, pixels under a GFM advisory flag (unreliable that pass) and scenes with no advisory
+layer don't count as a pass, so where GFM can't see, n_passes stays 0 ("unknown").
 Contains modified Copernicus Emergency Management Service information.
 """
 import argparse
@@ -79,6 +79,12 @@ def _rings(geom):
     return geom["coordinates"] if geom["type"] == "Polygon" else [r for poly in geom["coordinates"] for r in poly]
 
 
+def missing_file(err):
+    """The server says the file doesn't exist. A bare "404" isn't enough: errors can quote the file name,
+    and names hold dates (20240430)."""
+    return "HTTP response code: 404" in str(err)
+
+
 def read(href, attempts=10):
     """One GFM layer warped onto our AOI grid (nearest neighbour; 20 m -> 10 m).
 
@@ -94,7 +100,7 @@ def read(href, attempts=10):
             with rasterio.Env(**env), rasterio.open(href) as src:
                 return to_grid(src)
         except (rasterio.errors.RasterioError, CPLE_BaseError, OSError) as e:  # GDAL's HTTP errors are CPLE_*
-            if attempt == attempts or "404" in str(e):  # a missing file won't come back: see read_asset
+            if attempt == attempts or missing_file(e):  # a missing file won't come back: see read_asset
                 raise
             print(f"  read failed ({str(e)[:80]}), retry {attempt}/{attempts - 1}", flush=True)
             time.sleep(min(15 * attempt, 60))  # ~8 min of patience in total for a slow patch
@@ -108,7 +114,7 @@ def read_asset(item, key):
     try:
         return read(href)
     except (rasterio.errors.RasterioError, CPLE_BaseError, OSError) as e:
-        if "404" not in str(e):
+        if not missing_file(e):
             raise
         fresh = get_json(f"{STAC}/{item['id']}")
         if fresh["assets"][key]["href"] == href:
@@ -120,10 +126,12 @@ def read_asset(item, key):
 
 
 def passes(feats, verbose=False, skip=()):
-    """Per Sentinel-1 pass, in time order: (pass key 'YYYY-MM-DDTHH', seen, flooded) on the AOI grid.
+    """Per Sentinel-1 pass, in time order: (pass key 'YYYY-MM-DDTHH', seen, flooded, used) on the AOI grid.
 
     Frames of one pass (same date and hour) are merged. seen = GFM had data and didn't exclude the
-    pixel; flooded = seen and GFM's ensemble says flood. Excluded or no data is not seen ("unknown").
+    pixel; flooded = seen and GFM's ensemble says flood. Excluded or no data is not seen ("unknown"),
+    and so is a whole scene with no advisory layer: it may have had warnings (decision 1a).
+    used = the pass's scenes that counted, i.e. all but those without an advisory layer.
     Passes whose key is in `skip` (already done, e.g. from a checkpoint) aren't read again.
     """
     groups = defaultdict(list)
@@ -133,37 +141,41 @@ def passes(feats, verbose=False, skip=()):
         if key in skip:
             continue
         flood = excluded = advisory = None
+        used = []
         for f in frames:
-            a = read_asset(f, "ensemble_flood_extent")
-            e = read_asset(f, "exclusion_mask")
             try:
                 v = read_asset(f, "advisory_flags")
             except (rasterio.errors.RasterioError, CPLE_BaseError, OSError, KeyError) as err:
-                if not isinstance(err, KeyError) and "404" not in str(err):
+                if not isinstance(err, KeyError) and not missing_file(err):
                     raise
-                v = np.zeros_like(a)  # older archive passes (e.g. 2018) have no advisory layer: no warnings
-                if verbose:
-                    print(f"  {f['id']}: no advisory flags for this pass", flush=True)
+                print(f"  {f['id']}: no advisory layer, scene not seen", flush=True)
+                continue  # its neighbours in the pass still count, under their own flags
+            used.append(f)
+            a = read_asset(f, "ensemble_flood_extent")
+            e = read_asset(f, "exclusion_mask")
             if verbose:  # the documented encoding is 0/1 + no data; show what the files really hold
                 print(f"  {f['id']}: flood values {np.unique(a[np.isfinite(a)]).tolist()[:6]}, "
                       f"exclusion values {np.unique(e[np.isfinite(e)]).tolist()[:6]}", flush=True)
             flood = a if flood is None else np.where(np.isin(flood, (0, 1)), flood, a)
             excluded = e if excluded is None else np.where(np.isfinite(excluded), excluded, e)
             advisory = v if advisory is None else np.where(np.isfinite(advisory), advisory, v)
+        if flood is None:  # no scene of the pass has an advisory layer
+            _, width, height = flood_common.grid()
+            flood = excluded = advisory = np.full((height, width), np.nan, "float32")
         # Advisory flags (1 low regional backscatter: dry soil, frost, snow; 2 wind-roughened water; 3 both)
         # mark where GFM itself says its result is unreliable. Treat them as not seen for this pass:
         # on 30 Apr 2024 they covered 40 % of a false "flood" on tilled fields, but 0.7 % of the real Sept flood.
         seen = np.isin(flood, (0, 1)) & (excluded != 1) & ~np.isin(advisory, (1, 2, 3))
         flooded = seen & (flood == 1)
-        print(f"pass {key}h: {len(frames)} frame(s), sees {seen.mean():.0%} of the AOI, "
+        print(f"pass {key}h: {len(used)} of {len(frames)} frame(s) used, sees {seen.mean():.0%} of the AOI, "
               f"flood in {flooded.sum() / max(seen.sum(), 1):.2%} of it", flush=True)
-        yield key, seen, flooded
+        yield key, seen, flooded, used
 
 
 def counts(feats, verbose=True, save_dir=None):
     """n_flooded, n_passes from GFM items; with save_dir, also one GeoTIFF per pass that saw the AOI."""
     n_flooded = n_passes = None
-    for key, seen, flooded in passes(feats, verbose):
+    for key, seen, flooded, _ in passes(feats, verbose):
         if n_passes is None:
             n_flooded, n_passes = np.zeros(seen.shape, "uint16"), np.zeros(seen.shape, "uint16")
         n_passes += seen
