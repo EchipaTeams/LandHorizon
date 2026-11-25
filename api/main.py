@@ -31,6 +31,9 @@ MIN_OBSERVED_FRACTION = 0.5
 # Below this share of the plot's pixels with HAND data, terrain is "unknown": a median from one corner doesn't
 # describe the plot. 0.5 mirrors MIN_OBSERVED_FRACTION; accepted by the lead on 21 Nov 2026.
 TERRAIN_MIN_SHARE = 0.5
+# Below this share of the cells whose centre is inside the plot with EGMS data, ground is "unknown": one cell doesn't
+# describe a plot that holds several. Needs review: 0.5 mirrors the two above, the lead decides (L3).
+GROUND_MIN_SHARE = 0.5
 
 Status = Literal["measured", "unknown"]
 Ring = Annotated[list[tuple[float, float]], Field(min_length=4)]  # closed ring: first point == last
@@ -155,17 +158,19 @@ def terrain(polygon: Polygon) -> Terrain:
 
 
 def ground(polygon: Polygon) -> Ground:
-    """Median EGMS vertical velocity of the cells whose centre is inside the plot. No cell -> unknown, never 0.
+    """Median EGMS vertical velocity of the cells whose centre is inside the plot.
 
     The same rule as pipeline/ground.py --plots. Counting every 100 m cell a plot merely touches would
-    give a 0.5 ha plot the motion of a building next to it.
+    give a 0.5 ha plot the motion of a building next to it. Less than GROUND_MIN_SHARE of those cells with data
+    (or no cell at all) -> unknown, never 0.
     """
     data, _, tags = read_plot(GROUND_PATH, polygon, "run pipeline/ground.py", all_touched=False)
-    values = data.compressed()
-    values = values[~np.isnan(values)]
+    inside = data.compressed()  # the cells whose centre is inside the plot; NaN where EGMS has no cell
+    values = inside[~np.isnan(inside)]
     release = tags["RELEASE"]  # written by ground.py from the EGMS file names, e.g. "2020-2025"
-    if values.size == 0:
-        return Ground(status="unknown", velocity_mm_yr=None, n_cells=0, release=release)
+    # n_cells counts the cells with data either way, so an "unknown" can say how much data sits behind it.
+    if values.size == 0 or values.size / inside.size < GROUND_MIN_SHARE:
+        return Ground(status="unknown", velocity_mm_yr=None, n_cells=int(values.size), release=release)
     return Ground(status="measured", velocity_mm_yr=round(float(np.median(values)), 1),
                   n_cells=int(values.size), release=release)
 

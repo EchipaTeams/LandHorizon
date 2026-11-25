@@ -66,7 +66,8 @@ def test_unknown_rule(plot):
     else:
         assert flood["status"] == "measured" and flood["flooded_fraction"] is not None and flood["n_passes"] > 0
     assert (terrain["status"] == "unknown") == (terrain["hand_m"] is None)
-    assert (ground["status"] == "unknown") == (ground["velocity_mm_yr"] is None) == (ground["n_cells"] == 0)
+    assert (ground["status"] == "unknown") == (ground["velocity_mm_yr"] is None)
+    assert ground["status"] == "unknown" or ground["n_cells"] > 0  # unknown may still have cells, below GROUND_MIN_SHARE
 
 
 @pytest.mark.parametrize("plot", by_name("flood_sept_2024"))
