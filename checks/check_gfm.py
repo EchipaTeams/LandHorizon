@@ -1,4 +1,4 @@
-# check_gfm.py — run: uv run --with pystac-client python check_gfm.py
+# check_gfm.py: what values GFM files really hold over Pechea. run: uv run --with pystac-client python checks/check_gfm.py
 import numpy as np, rasterio
 from rasterio.warp import transform_bounds
 from rasterio.windows import from_bounds

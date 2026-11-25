@@ -12,7 +12,7 @@ Ingest → Process → Store (COGs) → Serve (FastAPI + TiTiler) → Web (React
                              evidence JSON → score → PDF report
 ```
 
-The pipeline turns raw data into COGs **once, ahead of time**, for one pilot region (provisionally Galați). The app only reads those COGs for the plot a user draws. Nothing heavy runs while a user waits, and nothing per request is stored.
+The pipeline turns raw data into COGs **once, ahead of time**, for one pilot region, Galați (locked on 25 Nov 2026). The app only reads those COGs for the plot a user draws. Nothing heavy runs while a user waits, and nothing per request is stored.
 
 | Layer | Source | Raw data | Processed | Result |
 |---|---|---|---|---|
@@ -77,7 +77,7 @@ The JSON `POST /evidence` returns is the contract between backend and frontend. 
 **Ground fields** (real since 16 Nov 2026, from `ground.tif`; the shape of the model didn't change):
 - `n_cells`: EGMS cells (100 m) **with data** whose **centre is inside the plot**, the same rule as `pipeline/ground.py --plots`. Flood and terrain take every pixel a plot touches; for 100 m cells that would give a 0.5 ha plot the motion of a building next to it. It is filled when the status is `unknown` for lack of cells too, as flood keeps `n_passes`, so the answer says how much data sits behind it. Since 23 Nov 2026 `unknown` no longer means 0 cells: a plot can be `unknown` with `n_cells` 1.
 - `velocity_mm_yr`: median vertical velocity of those cells, in mm/yr (negative = sinking), to 0.1 as EGMS delivers it.
-- `status`: `unknown`, with `velocity_mm_yr` `null`, when less than half of the cells whose centre is inside the plot have data (`GROUND_MIN_SHARE`, 0.5, in `api/main.py`), and when no cell has its centre inside (`n_cells` 0). Never 0 mm/yr. Exactly half counts as `measured`. Until 23 Nov 2026 one cell was enough, so a plot holding several cells got the motion of the one that had data. The 0.5 mirrors `MIN_OBSERVED_FRACTION` and `TERRAIN_MIN_SHARE` and needs the lead's review (decision L3). On farmland `unknown` is the usual answer: 18 of the 20 test plots, none of them changed by the share (`edge-50`, 1 of 2 cells, and `edge-65`, 4 of 8, stay `measured`).
+- `status`: `unknown`, with `velocity_mm_yr` `null`, when less than half of the cells whose centre is inside the plot have data (`GROUND_MIN_SHARE`, 0.5, in `api/main.py`), and when no cell has its centre inside (`n_cells` 0). Never 0 mm/yr. Exactly half counts as `measured`. Until 23 Nov 2026 one cell was enough, so a plot holding several cells got the motion of the one that had data. The 0.5 mirrors `MIN_OBSERVED_FRACTION` and `TERRAIN_MIN_SHARE`. Proposed 23 Nov 2026, accepted by the lead on 25 Nov 2026 (L3) with this denominator. The alternative, max(1, round(`area_ha`)), was compared on the real `ground.tif` (`checks/ground_share/compare.py`): the two agree on all 20 test plots and on 97 % of 9,600 rectangles placed on cells with data. Where they differ, the area denominator is looser on plots of 2 ha or less (1 cell with data out of 3 or 4 that fit counts as `measured`) and depends on where the plot sits on the 100 m grid. On farmland `unknown` is the usual answer: 18 of the 20 test plots, none of them changed by the share (`edge-50`, 1 of 2 cells, and `edge-65`, 4 of 8, stay `measured`).
 - `release`: the EGMS release behind the answer (now `2020-2025`), read from the tag `ground.py` writes into `ground.tif`. Filled for unknown plots too.
 
 **Plot fields** (real since 16 Nov 2026):
@@ -164,8 +164,8 @@ Engineering only. Dates come from the team plan.
 |---|---|---|---|---|
 | 1 | Skeleton | 8 Nov | repo, uv, contract + mock endpoint, these docs | done |
 | 2 | Terrain | 8 Nov | `POST /evidence` returns real HAND under the polygon | done |
-| 3 | Data test | Sun 15 Nov | the checks below (*Data test*) have answers; pilot region locked; frontend draws a plot and shows the mock | |
-| 4 | Real slice | Sun 22 Nov | plot → HAND + EGMS → result; flood baseline on one event (Sept 2024); dry-date test run; mock deployed publicly | |
+| 3 | Data test | Sun 15 Nov | the checks below (*Data test*) have answers; pilot region locked; frontend draws a plot and shows the mock | Done, except the frontend check: data-test answers 13 Nov, Galați locked 25 Nov; the website's mock flow is checked in L8 |
+| 4 | Real slice | Sun 22 Nov | plot → HAND + EGMS → result; flood baseline on one event (Sept 2024); dry-date test run; mock deployed publicly | Done, except the public deploy: plot → HAND + EGMS 16 Nov (#6), Sept 2024 flood and dry-date test 10 Nov; the deploy is due 27 Nov (G4) |
 | 5 | Flood validated | Sun 29 Nov | precision and recall against the reference; first full batch; scoring with the unknown rule; all 3 layers real | |
 | 6 | Feature freeze | Sun 6 Dec | public URL runs the full flow; PDF via print CSS | |
 | 7 | Submit | Thu 10 Dec | bug fixes only; README tested by someone new | |
@@ -208,7 +208,8 @@ About 20 realistic plots around Galați, mostly non-urban, at three sizes (under
 - **Fresh clone:** someone outside the team gets it running from the README in 10 minutes.
 
 ## Open decisions
-- **Pilot region:** Galați is provisional and decided by the week-1 data test.
+- **Segment (gate, 22 Nov):** not decided. It waits for the interview summary; until then the product stays aimed at land buyers.
+- **Law option (gate, 22 Nov):** provisional, until the law wording is checked with Simonel at the SAR workshop (26 Nov).
 - **Flood dates in the JSON:** for now `flood_dates` lists the **pass dates** that saw water on the plot (see *The evidence contract*). Grouping passes into region-wide **events** (within about 10 days) is still open; with GFM it would be computed from the per-pass bands already in `flood_gfm.tif`, so no new data is needed.
 - **False flood dates outside real floods** (under review; the lead researches detection methods on 11 Nov 2026). GFM fails the spring test, so on floodplain farmland `flood_dates` and `flooded_fraction` can include tilled-soil false alarms, and the report can't present every date as a confirmed flood. To check:
   - **A verified-event list.** Only pass dates inside a list of confirmed floods (for 2024: 12–25 Sept, EMSR758) count as flood. Other dates are reported separately as unverified, and `flooded_fraction` counts the verified passes only. It needs no new data: the per-pass bands are already in `flood_gfm.tif`. **Not adopted:**
@@ -226,9 +227,8 @@ About 20 realistic plots around Galați, mostly non-urban, at three sizes (under
   - **Cost:** no quota, but about 1.7 GB of download and a few minutes of SNAP per scene. Only a small AOI crop per scene is kept.
   - **Decision:** made after comparing its output with the Earth Engine v0.2 COG ([flood-validation.md](flood-validation.md)).
 - **Baseline for the 10-year batch** (own method only; GFM handles this itself): v0.2 uses one summer-2023 baseline. Over 10 years each event needs a dry baseline outside it, for example the summer of the same or the previous year. Undecided.
-- **Ground share (`GROUND_MIN_SHARE`):** ground used to be `measured` with one EGMS cell, whatever the plot's size. Proposed 23 Nov 2026 (raised in PR #9 on 20 Nov, postponed by the lead to a separate PR): `unknown` when less than half of the cells whose centre is inside the plot have data, like terrain's rule. Implemented with 0.5, marked "needs review"; the lead's decision L3 gives the value. Checked on the 20 test plots: `edge-50` (1 of 2 cells) and `edge-65` (4 of 8) stay `measured`, the other 18 stay `unknown`. The shape of the model doesn't change, but `n_cells` can now be above 0 on an `unknown` answer (see *Ground fields*), which the website may assume it can't. Once accepted, this entry moves into *Ground fields*, as terrain's did.
 - **Orphan flooded passes** (no regional event): show them as "local/unconfirmed" or drop them as noise. The dry-date test decides.
-- **Score format:** decided after customer interviews.
+- **Score format (decided 25 Nov 2026 by the lead):** no number. `overall` gives a status for flood, a status for terrain and one status for both, each with its reasons. Ground stays out of it, because it is shown only where it exists. A core layer that is `unknown` gives `incomplete`, never a low value. The status values and the model's new shape come with the change to `overall` (L7), which changes the contract.
 
 ## Skipped until needed
 PostGIS, accounts, payments, cadastral ID lookup, more regions, ML. ML is a stretch goal only if everything else is finished.
