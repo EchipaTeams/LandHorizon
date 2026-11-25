@@ -27,7 +27,8 @@ from pathlib import Path
 
 import numpy as np
 import rasterio
-from rasterio.features import geometry_mask
+from rasterio.features import bounds, geometry_mask
+from rasterio.transform import array_bounds
 from rasterio.warp import transform_geom
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "pipeline"))
@@ -78,6 +79,7 @@ def test_plots(band, transform):
 def sweep(band, transform, per_shape, rng):
     """Rectangles placed so that at least the cell under their centre has data; both rules then have a case."""
     rows, cols = np.nonzero(np.isfinite(band))
+    edges = rasterio.coords.BoundingBox(*array_bounds(*band.shape, transform))
     if rows.size == 0:
         sys.exit("ground.tif has no cell with data")
     print(f"\nPart 2: {per_shape} rectangles per size, shape and rotation, each centred within a cell that has data")
@@ -90,9 +92,13 @@ def sweep(band, transform, per_shape, rng):
                 tally = {(m1, m2): 0 for m1 in (True, False) for m2 in (True, False)}
                 fits = []
                 for _ in range(per_shape):
-                    i = rng.randrange(rows.size)
-                    x, y = transform * (cols[i] + rng.random(), rows[i] + rng.random())
-                    geom = rectangle(x, y, size, aspect, degrees)
+                    while True:  # the API refuses a plot not wholly inside the raster (422), so skip those
+                        i = rng.randrange(rows.size)
+                        x, y = transform * (cols[i] + rng.random(), rows[i] + rng.random())
+                        geom = rectangle(x, y, size, aspect, degrees)
+                        left, bottom, right, top = bounds(geom)
+                        if left >= edges.left and bottom >= edges.bottom and right <= edges.right and top <= edges.top:
+                            break
                     _, fit, data, by_fit, by_area = judge(geom, band, transform)
                     tally[(by_fit == "measured", by_area == "measured")] += 1
                     fits.append(fit)
