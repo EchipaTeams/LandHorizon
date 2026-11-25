@@ -49,7 +49,7 @@ Tuesday's decisions unblock Ground (L3, L4) and the scoring (L6), so they come f
 
 | # | Work to do | Due | Waits on |
 |---|---|---|---|
-| L1 | Commit the local cleanup: drop `pystac-client` from `pyproject.toml` and `uv.lock`, move `pipeline/check_gfm.py` to `checks/`, gitignore `checks/*/run*/` and `*.stackdump` | Mon 23 | — |
+| L1 | **Done** (25 Nov): `pystac-client` dropped from `pyproject.toml` and `uv.lock` (`checks/check_gfm.py` runs it with `uv run --with`), `pipeline/check_gfm.py` moved to `checks/`; the gitignore lines came in with #12 | Mon 23 | — |
 | L2 | Write the gate outcomes (segment, score format, provisional law option), lock Galați, fill in milestone 3–4 status in `architecture.md` | Tue 24 | B1 |
 | L3 | Set the ground share threshold (0.5 proposed in PR #9) and its denominator: PR #11 divides by the cells whose centre fits in the plot, `DECISIONS.md` #5 by max(1, round(`area_ha`)) | Tue 24 | — |
 | L4 | Agree the cropland field's name and type with Ground and Website | Tue 24 | — |
