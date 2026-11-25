@@ -4,7 +4,7 @@ from rasterio.errors import RasterioIOError
 
 import flood_common
 import gfm_score
-from flood_gfm import before_version_change, versions
+from flood_gfm import before_version_change, load_checkpoint, save_checkpoint, versions
 
 NAN = np.nan
 
@@ -36,9 +36,10 @@ MISSING = RasterioIOError("HTTP response code: 404")
 
 @pytest.mark.parametrize("missing", [MISSING, KeyError("advisory_flags")])
 def test_scene_without_advisory_layer_is_not_seen(monkeypatch, missing):
-    (key, seen, flooded), = run(monkeypatch, {"2018-07-02T16:00:00Z": (px(1, 0, 1, 0), px(0, 0, 0, 0), missing)})
+    (key, seen, flooded, used), = run(monkeypatch, {"2018-07-02T16:00:00Z": (px(1, 0, 1, 0), px(0, 0, 0, 0), missing)})
     assert key == "2018-07-02T16"
     assert not seen.any() and not flooded.any()
+    assert used == []  # so gfm_versions doesn't list the pass
 
 
 @pytest.mark.parametrize("order", [(0, 1), (1, 0)])
@@ -46,7 +47,8 @@ def test_missing_scene_leaves_the_rest_of_its_pass_alone(monkeypatch, order):
     """Pixel 1 is seen by both scenes, 2 and 3 only by the one with the layer, 0 only by the one without."""
     both = [("2018-07-02T16:00:00Z", (px(1, 1, NAN, NAN), px(0, 0, NAN, NAN), MISSING)),
             ("2018-07-02T16:00:25Z", (px(NAN, 0, 1, 1), px(NAN, 0, 0, 0), px(NAN, 0, 0, 2)))]
-    (_, seen, flooded), = run(monkeypatch, dict(both[i] for i in order))
+    (_, seen, flooded, used), = run(monkeypatch, dict(both[i] for i in order))
+    assert [f["id"] for f in used] == ["2018-07-02T16:00:25Z"]
     assert seen.tolist() == [[False, True, True, False]]  # the last pixel is under a real flag
     assert flooded.tolist() == [[False, False, True, False]]
 
@@ -80,3 +82,12 @@ def test_versions_per_pass():
              scene("2024-05-05T04:30:00Z")]
     assert versions(feats) == {"2024-05-01T16": ["GFM v3.1.0", "DLR TUW"],  # only what all its scenes have
                                "2024-05-05T04": ["GFM v3.1.0", "DLR LIST TUW"]}
+
+
+def test_checkpoint_keeps_the_scenes_that_counted(tmp_path):
+    path, zero = tmp_path / "c.npz", np.zeros((1, 4), "uint16")
+    save_checkpoint(path, zero, zero, [("2018-07-02T16", np.array([1]))], {"2018-07-02T16"}, {"b", "a"})
+    *_, done, used = load_checkpoint(path, (1, 4))
+    assert done == {"2018-07-02T16"} and used == {"a", "b"}
+    np.savez(path, **{k: v for k, v in np.load(path).items() if k != "used"})  # written before `used` existed
+    assert load_checkpoint(path, (1, 4))[-1] is None

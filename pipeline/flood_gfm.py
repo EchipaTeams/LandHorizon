@@ -15,7 +15,8 @@ Writes data/processed/flood_gfm.tif on the AOI grid (UTM 35N, 10 m):
           The band description is the pass time (e.g. 2024-09-14T04), which gives the API its flood dates.
 The period goes into the file's tags, so the API can say what it covers. The history stops at a change of
 GFM's major version (decision 1b: such layers can't be used together), and period_end then says so. The tag
-gfm_versions records, per pass, the GFM version and the algorithms that contributed to all its scenes.
+gfm_versions records, per pass, the GFM version and the algorithms that contributed to all the scenes that
+counted (a scene without an advisory layer doesn't count, decision 1a; a pass with none that counted isn't listed).
 Contains modified Copernicus Emergency Management Service information.
 """
 import argparse
@@ -53,7 +54,8 @@ def before_version_change(feats):
 
 
 def versions(feats):
-    """Per pass key: [GFM version(s), algorithms that contributed to all its scenes], from the catalogue."""
+    """Per pass key: [GFM version(s), algorithms that contributed to all its scenes], from the catalogue.
+    Give it only the scenes that counted (gfm_score.passes' `used`)."""
     found, members = defaultdict(set), {}
     for f in feats:
         p = f["properties"]
@@ -65,19 +67,21 @@ def versions(feats):
 
 
 def load_checkpoint(path, shape):
-    """(n_flooded, n_passes, flood_bands, done pass keys), from a checkpoint or fresh."""
+    """(n_flooded, n_passes, flood_bands, done pass keys, used scene ids), from a checkpoint or fresh.
+    used is None for a checkpoint written before it was recorded."""
     if not path.exists():
-        return np.zeros(shape, "uint16"), np.zeros(shape, "uint16"), [], set()
+        return np.zeros(shape, "uint16"), np.zeros(shape, "uint16"), [], set(), set()
     c = np.load(path)
     idx = np.split(c["flood_idx"], c["flood_split"])
-    return (c["n_flooded"], c["n_passes"], list(zip(c["flood_keys"].tolist(), idx)), set(c["done"].tolist()))
+    used = set(c["used"].tolist()) if "used" in c.files else None
+    return (c["n_flooded"], c["n_passes"], list(zip(c["flood_keys"].tolist(), idx)), set(c["done"].tolist()), used)
 
 
-def save_checkpoint(path, n_flooded, n_passes, flood_bands, done):
+def save_checkpoint(path, n_flooded, n_passes, flood_bands, done, used):
     """Progress so far, so a crash or network failure resumes here instead of from the start."""
     sizes = [len(i) for _, i in flood_bands]
     tmp = path.with_suffix(".tmp.npz")
-    np.savez(tmp, n_flooded=n_flooded, n_passes=n_passes, done=np.array(sorted(done)),
+    np.savez(tmp, n_flooded=n_flooded, n_passes=n_passes, done=np.array(sorted(done)), used=np.array(sorted(used)),
              flood_keys=np.array([k for k, _ in flood_bands]),
              flood_idx=np.concatenate([i for _, i in flood_bands]) if flood_bands else np.array([], "int64"),
              flood_split=np.cumsum(sizes)[:-1] if sizes else np.array([], "int64"))
@@ -104,17 +108,22 @@ def main():
     transform, width, height = grid()
     # "1a" keeps a checkpoint from before that decision (missing advisory layer = no warnings) from being resumed
     checkpoint = OUT / f"flood_gfm_1a_{a.start}_{end}.checkpoint.npz"
-    n_flooded, n_passes, flood_bands, done = load_checkpoint(checkpoint, (height, width))
+    n_flooded, n_passes, flood_bands, done, used = load_checkpoint(checkpoint, (height, width))
     if done:
         print(f"resuming from {checkpoint.name}: {len(done)} passes already done", flush=True)
-    for key, seen, flooded in passes(feats, skip=done):
+    if used is None:  # its passes' dropped scenes weren't recorded: count them all, as before
+        print("  this checkpoint doesn't record dropped scenes: gfm_versions lists all scenes of its passes",
+              flush=True)
+        used = {f["id"] for f in feats if f["properties"]["datetime"][:13] in done}
+    for key, seen, flooded, frames in passes(feats, skip=done):
         n_passes += seen
         n_flooded += flooded
         if flooded.any():
             flood_bands.append((key, np.flatnonzero(flooded)))
         done.add(key)
+        used |= {f["id"] for f in frames}
         if len(done) % 10 == 0:
-            save_checkpoint(checkpoint, n_flooded, n_passes, flood_bands, done)
+            save_checkpoint(checkpoint, n_flooded, n_passes, flood_bands, done, used)
 
     tmp = PATH.with_suffix(".part.tif")
     OUT.mkdir(parents=True, exist_ok=True)
@@ -130,7 +139,7 @@ def main():
         dst.descriptions = ("n_flooded", "n_passes", *(key for key, _ in flood_bands))
         dst.update_tags(source="Copernicus GFM ensemble flood extent + exclusion mask",
                         period_start=a.start.isoformat(), period_end=end,
-                        gfm_versions=json.dumps(versions(feats), separators=(",", ":")))
+                        gfm_versions=json.dumps(versions([f for f in feats if f["id"] in used]), separators=(",", ":")))
     rio_copy(tmp, PATH, driver="COG", compress="deflate", interleave="band", BIGTIFF="IF_SAFER")
     tmp.unlink()
     checkpoint.unlink(missing_ok=True)

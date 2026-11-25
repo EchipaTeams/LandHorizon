@@ -126,11 +126,12 @@ def read_asset(item, key):
 
 
 def passes(feats, verbose=False, skip=()):
-    """Per Sentinel-1 pass, in time order: (pass key 'YYYY-MM-DDTHH', seen, flooded) on the AOI grid.
+    """Per Sentinel-1 pass, in time order: (pass key 'YYYY-MM-DDTHH', seen, flooded, used) on the AOI grid.
 
     Frames of one pass (same date and hour) are merged. seen = GFM had data and didn't exclude the
     pixel; flooded = seen and GFM's ensemble says flood. Excluded or no data is not seen ("unknown"),
     and so is a whole scene with no advisory layer: it may have had warnings (decision 1a).
+    used = the pass's scenes that counted, i.e. all but those without an advisory layer.
     Passes whose key is in `skip` (already done, e.g. from a checkpoint) aren't read again.
     """
     groups = defaultdict(list)
@@ -140,6 +141,7 @@ def passes(feats, verbose=False, skip=()):
         if key in skip:
             continue
         flood = excluded = advisory = None
+        used = []
         for f in frames:
             try:
                 v = read_asset(f, "advisory_flags")
@@ -148,6 +150,7 @@ def passes(feats, verbose=False, skip=()):
                     raise
                 print(f"  {f['id']}: no advisory layer, scene not seen", flush=True)
                 continue  # its neighbours in the pass still count, under their own flags
+            used.append(f)
             a = read_asset(f, "ensemble_flood_extent")
             e = read_asset(f, "exclusion_mask")
             if verbose:  # the documented encoding is 0/1 + no data; show what the files really hold
@@ -164,15 +167,15 @@ def passes(feats, verbose=False, skip=()):
         # on 30 Apr 2024 they covered 40 % of a false "flood" on tilled fields, but 0.7 % of the real Sept flood.
         seen = np.isin(flood, (0, 1)) & (excluded != 1) & ~np.isin(advisory, (1, 2, 3))
         flooded = seen & (flood == 1)
-        print(f"pass {key}h: {len(frames)} frame(s), sees {seen.mean():.0%} of the AOI, "
+        print(f"pass {key}h: {len(used)} of {len(frames)} frame(s) used, sees {seen.mean():.0%} of the AOI, "
               f"flood in {flooded.sum() / max(seen.sum(), 1):.2%} of it", flush=True)
-        yield key, seen, flooded
+        yield key, seen, flooded, used
 
 
 def counts(feats, verbose=True, save_dir=None):
     """n_flooded, n_passes from GFM items; with save_dir, also one GeoTIFF per pass that saw the AOI."""
     n_flooded = n_passes = None
-    for key, seen, flooded in passes(feats, verbose):
+    for key, seen, flooded, _ in passes(feats, verbose):
         if n_passes is None:
             n_flooded, n_passes = np.zeros(seen.shape, "uint16"), np.zeros(seen.shape, "uint16")
         n_passes += seen
