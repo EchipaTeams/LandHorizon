@@ -197,9 +197,9 @@ The lead asked for a spring window, because the September one can't catch false 
 - **Not adjusted:** the method stays as it is. How the report shows flood dates outside a verified event is to be decided with the lead.
 
 ### Spring window on GFM v4, 2025: fails, cause unknown (25 Nov 2026)
-The criterion and the possible outcomes were pushed before the run (`79f0d6a`, `17dfccb` on `flood-v4-spring`): **20 Apr–5 May 2025, at most 1 % of land flagged in ≥1 pass.** All 30 scenes are GFM v4.0.0 and have an advisory layer.
+The criterion and the possible outcomes were pushed before the run (`79f0d6a`, `17dfccb`, in PR #14): **20 Apr–5 May 2025, at most 1 % of land flagged in ≥1 pass.** All 30 scenes are GFM v4.0.0 and have an advisory layer.
 
-**Dryness check, before the run: passed.**
+**Dryness check, before the run: passed on the polder.**
 - **Floods on record:** a web search found none in Galați County for the window. No gauge readings were found. The nearest were warnings for 26–27 May 2025, after the window.
 - **Sentinel-2 checked by eye:** 21, 24, 29 Apr and 3 May 2025, no standing water on the polder's fields. 4 and 5 May weren't checked.
 - **NDWI > 0 on polder land JRC has never seen wet:** 0.08 % on all four dates. On permanent water, as a control: 94–96 %.
@@ -219,7 +219,7 @@ The criterion and the possible outcomes were pushed before the run (`79f0d6a`, `
 | 1 May 16h | 0 % | 8.86 % | 12 ha | 0 ha |
 | Any pass | 56 % | | 28,133 ha | 636 ha |
 
-The polder box is lat 45.51–45.62, lon 28.07–28.15. The other 7 of the 11 passes saw nothing of the AOI. On 1 May GFM had data on 8.7 % of the AOI, 99.5 % of it under advisory flag 1 (low regional backscatter). 43.6 % of the AOI was never seen.
+The polder box is lat 45.51–45.62, lon 28.07–28.15. The other 7 of the 11 passes saw nothing of the AOI. On 1 May GFM had data on 8.7 % of the AOI, 99.5 % of it under advisory flag 1 (low regional backscatter). 43.6 % of the AOI was never seen. "Flagged, of what it saw" divides by every pixel the pass saw, permanent water included, so it doesn't compare with the land percentages and the 1 % limit above.
 
 - **Result: v4 fails the spring test too. The cause is unknown:** the criterion puts it down to tilled fields only if the images show bare fields where the flags are, and mostly they don't.
 - **Inside the polder box (2 % of the flags):** bare fields, 93 % of the flagged area has NDVI < 0.25. This part looks like 2024's tilled-field false alarm.
@@ -228,7 +228,7 @@ The polder box is lat 45.51–45.62, lon 28.07–28.15. The other 7 of the 11 pa
 - **Hypothesis, untested:** dense spring crops. GFM's documentation names "certain growing conditions" over cropland. Crop types weren't checked.
 - **Not a comparison of versions:** the version, the fields and the passes all differ between 2024 and 2025, and no v3 run of 2025 exists. This doesn't validate or reject v4.
 - **2024, not yet checked the same way:** on 30 Apr 2024, 7,426 of the 8,995 ha of flagged land were outside the polder box too (local `flood_gfm.tif`, after the advisory fix). What grew there hasn't been looked at.
-- **Nothing adjusted:** the method stays as it is, and the history stops before v4 (decision 1b).
+- **Nothing adjusted:** the method stays as it is, and the history stops before v4 (decision 1b, *Period of the flood history* in [architecture.md](architecture.md)).
 
 ### GFM passes without an advisory layer, per year (asked before any 10-year run)
 The fix above treats pixels under a GFM advisory flag as not seen. The lead asked how many older passes don't have the advisory layer at all, because the fix can't apply there.

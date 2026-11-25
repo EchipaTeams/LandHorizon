@@ -20,8 +20,8 @@ F1 is the week's bottleneck: everything else on flood waits for it, so it should
 | F1 | Decision 1a: in `gfm_score.passes()` a pass with no advisory layer counts as not seen (today `gfm_score.py:144` fills in zeros). Decision 1b: record `processing:version` per pass and stop the history at a major version change, not a fixed date. Same commit: `architecture.md` period section, 198 → 224 in both docs, tests | Wed 25 | — |
 | F2 | Re-score every criterion under 1a: Sept 2023 dry, Sept 2024 event, spring 2024, Botoșani 2018. Log before and after in `flood-validation.md` | Thu 26 | F1 |
 | F3 | Time a one-month build first, then run the full batch 2015-01-01 → 2025-04-13 and put `flood_gfm.tif` on the Drive | Sat 28 | F1 |
-| F4 | Spring test on GFM v4: `gfm_score.py 2025-04-20 2025-05-06`, logged in `flood-validation.md`. Does the tillage false alarm repeat in v4? | Wed 25 | — |
-| F5 | Credit JRC Global Surface Water in the README (the water mask uses it) | Wed 25 | — |
+| F4 | **Done** (PR #14, 25 Nov): criterion pushed before the run, then `gfm_score.py 2025-04-20 2025-05-06` logged in `flood-validation.md`. **v4 fails too:** 15.81 % of land flagged in ≥1 pass against the 1 % limit (2024 on v3: 9.06 %). The cause is unknown: 98 % of the flags are outside the polder, on green land, so tilled fields don't explain them. The method isn't changed, and under 1b the history stops before v4 anyway. **Not checked yet:** what grew under 2024's flags outside the polder | Wed 25 | — |
+| F5 | **Done** (PR #14): the README credits JRC Global Surface Water v1.4 (Pekel et al., 2016) | Wed 25 | — |
 | F6 | With the new `flood_gfm.tif`: run `api/test_plots.py`, check `period_end` reads 2025-04-13, update the 20-plot flood numbers in the docs | Sun 29 | F3 |
 
 ## Ground: Alex, Miriam
