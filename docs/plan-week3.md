@@ -50,11 +50,11 @@ Tuesday's decisions unblock Ground (L3, L4) and the scoring (L6), so they come f
 | # | Work to do | Due | Waits on |
 |---|---|---|---|
 | L1 | **Done** (25 Nov): `pystac-client` dropped from `pyproject.toml` and `uv.lock` (`checks/check_gfm.py` runs it with `uv run --with`), `pipeline/check_gfm.py` moved to `checks/`; the gitignore lines came in with #12 | Mon 23 | — |
-| L2 | Write the gate outcomes (segment, score format, provisional law option), lock Galați, fill in milestone 3–4 status in `architecture.md` | Tue 24 | B1 |
-| L3 | Set the ground share threshold (0.5 proposed in PR #9) and its denominator: PR #11 divides by the cells whose centre fits in the plot, `DECISIONS.md` #5 by max(1, round(`area_ha`)) | Tue 24 | — |
+| L2 | **Partly done** (25 Nov): Galați locked, milestone 3–4 status filled in, score format written down (L6). **Left:** the segment, after the interview summary (B1), and the law option, after Simonel (Thu 26) | Tue 24 | B1 |
+| L3 | Set the ground share threshold (0.5 proposed in PR #9) and its denominator: PR #11 divides by the cells whose centre fits in the plot, `DECISIONS.md` #5 by max(1, round(`area_ha`)). **Moved to the weekend:** run `checks/ground_share/compare.py` on the real `ground.tif`, then pick | Sun 29 | — |
 | L4 | Agree the cropland field's name and type with Ground and Website | Tue 24 | — |
 | L5 | Send the GFM helpdesk email (draft in `docs/research/briefs/4-emails.md`) | Tue 24 | — |
-| L6 | Decide the `overall` score format from the gate | Wed 25 | L2 |
+| L6 | **Done** (25 Nov): no number; a status for flood, one for terrain and one for both, each with reasons; ground stays out (`architecture.md`, *Score format*) | Wed 25 | — |
 | L7 | Implement `overall` in that format: any core layer unknown gives `incomplete`, never low | Sun 29 | L6 |
 | L8 | Review the flood PRs, the cropland PR and the deploy; check the website repo | Thu 26 – Sat 28 | F1, G3, G4 |
 | L9 | Decide #2: held-out windows and limits for the per-algorithm test | Sat 28 | F2 |
