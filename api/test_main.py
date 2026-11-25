@@ -133,6 +133,30 @@ def test_ground(layers, monkeypatch):
     assert client.post("/evidence", json=LEFT).status_code == 503
 
 
+def test_ground_share(layers, monkeypatch):
+    """Ground needs GROUND_MIN_SHARE of the cells whose centre is inside the plot to have data, like terrain and flood."""
+    def rectangle(west, south, east, north):
+        return {"type": "Polygon", "coordinates": [[[west, south], [east, south], [east, north], [west, north], [west, south]]]}
+
+    # Row 8, cols 2-4: three cells fit and only the first has data (1.4). 1 of 3 is under the share: unknown, yet
+    # n_cells says how much data sits behind it, as flood's n_passes does.
+    one_of_three = rectangle(28.0021, 45.4011, 28.0049, 45.4019)
+    under = client.post("/evidence", json=one_of_three).json()["ground"]
+    assert under == {"status": "unknown", "velocity_mm_yr": None, "n_cells": 1, "release": "2020-2025"}
+
+    # Rows 8-9, cols 1-2: four cells fit and two have data (-3.2 and 1.4). 2 of 4 is exactly the share: measured.
+    two_of_four = rectangle(28.0011, 45.4001, 28.0029, 45.4019)
+    at = client.post("/evidence", json=two_of_four).json()["ground"]
+    assert at == {"status": "measured", "velocity_mm_yr": -0.9, "n_cells": 2, "release": "2020-2025"}
+
+    # The constant decides, in both directions.
+    monkeypatch.setattr(main, "GROUND_MIN_SHARE", 0.6)
+    assert client.post("/evidence", json=two_of_four).json()["ground"]["status"] == "unknown"
+    monkeypatch.setattr(main, "GROUND_MIN_SHARE", 0.3)
+    assert client.post("/evidence", json=one_of_three).json()["ground"] == {
+        "status": "measured", "velocity_mm_yr": 1.4, "n_cells": 1, "release": "2020-2025"}
+
+
 def test_plot(layers):
     def expected_ha(lat, d):
         """A d x d degree square's area from the length of a degree on the WGS84 ellipsoid at its mid latitude."""
