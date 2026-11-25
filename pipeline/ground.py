@@ -9,8 +9,10 @@ on the EGMS 100 m grid, NaN where EGMS has no cell.
   uv run python pipeline/ground.py                                      # build ground.tif
   uv run python pipeline/ground.py --plots data/sample/plots.geojson    # data test (milestone 3)
 
---plots reads ground.tif and prints, per plot, how many EGMS cells have their centre
-inside it and their median velocity; then a summary per size class. It writes nothing.
+--plots reads ground.tif and prints, per plot, how many cells have their centre inside it, how many
+of those have EGMS data ("1 of 2", and the share), and the median velocity of the ones with data;
+then a summary per size class. It writes nothing and decides nothing: whether a plot is measured or
+unknown is up to the API (GROUND_MIN_SHARE in api/main.py), this only reports the numbers it works on.
 """
 import argparse
 import csv
@@ -121,9 +123,11 @@ def ring_area(ring):
 
 
 def plot_cells(geometry, band, transform):
-    """(area in ha, EGMS cells whose centre lies inside, median mm/yr or None) for one WGS84 polygon.
+    """(area in ha, cells whose centre lies inside, of those the cells with EGMS data, median mm/yr or None)
+    for one WGS84 polygon.
 
-    None means unknown: no cell, so no measurement. It is never turned into 0.
+    The cells that fit count the grid's empty cells too: they are the share's denominator, as in the API.
+    None means unknown: no cell with data, so no measurement. It is never turned into 0.
     """
     geom = transform_geom("EPSG:4326", CRS, geometry)
     polygons = geom["coordinates"] if geom["type"] == "MultiPolygon" else [geom["coordinates"]]
@@ -131,11 +135,11 @@ def plot_cells(geometry, band, transform):
     # all_touched=False: a cell counts only if its centre is inside the plot.
     inside = geometry_mask([geom], out_shape=band.shape, transform=transform, all_touched=False, invert=True)
     values = band[inside & np.isfinite(band)]
-    return area_m2 / 10_000, values.size, float(np.median(values)) if values.size else None
+    return area_m2 / 10_000, int(inside.sum()), values.size, float(np.median(values)) if values.size else None
 
 
 def report_plots(plots_path):
-    """Print the EGMS cells per plot and a summary per size class. Writes nothing."""
+    """Print the EGMS cells per plot (with data, out of the ones that fit) and a summary per size class. Writes nothing."""
     if not OUT.exists():
         sys.exit(f"{OUT} not found: run `uv run python pipeline/ground.py` first to build it")
     with rasterio.open(OUT) as src:
@@ -144,28 +148,33 @@ def report_plots(plots_path):
     features = json.loads(Path(plots_path).read_text())["features"]
 
     print(f"EGMS cells per plot (centre inside), {OUT.name} release {release}")
-    print(f"{'name':<24} {'size_class':<11} {'area_ha':>8}  {'land_cover':<18} {'cells':>5}  median mm/yr")
+    print("cells: with data of the ones whose centre is inside the plot; share: the first over the second")
+    print(f"{'name':<24} {'size_class':<11} {'area_ha':>8}  {'land_cover':<18} {'cells':>9} {'share':>5}  median mm/yr")
     by_class = {}
     for f in features:
         props = f["properties"]
-        area, cells, median = plot_cells(f["geometry"], band, transform)
-        by_class.setdefault(props["size_class"], []).append(cells)
+        area, fit, cells, median = plot_cells(f["geometry"], band, transform)
+        by_class.setdefault(props["size_class"], []).append((fit, cells))
         shown = "unknown" if median is None else f"{median:.1f}"
+        share = f"{cells / fit:.0%}" if fit else "-"  # no cell fits: the share is not defined, not 0 %
         print(f"{props['name']:<24} {props['size_class']:<11} {area:8.2f}  {props['land_cover']:<18} "
-              f"{cells:5d}  {shown}")
+              f"{f'{cells} of {fit}':>9} {share:>5}  {shown}")
 
     print("per size class:")
     order = ["under_1_ha", "1_to_5_ha", "over_5_ha"]  # any other class the file uses goes last
     for size_class in sorted(by_class, key=lambda c: order.index(c) if c in order else len(order)):
-        counts = by_class[size_class]
-        print(f"  {size_class:<11} plots {len(counts):2d}, with >=1 cell {sum(c > 0 for c in counts):2d}, "
-              f"cells per plot {sum(counts) / len(counts):.1f}")
+        fits, cells = zip(*by_class[size_class])
+        n = len(fits)
+        share = f"{sum(cells) / sum(fits):.0%}" if sum(fits) else "-"
+        print(f"  {size_class:<11} plots {n:2d}, cells that fit {sum(fits) / n:.1f} per plot, "
+              f"with data {sum(cells) / n:.1f}, share {share}, plots with data {sum(c > 0 for c in cells)} of {n}")
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--plots", metavar="PATH",
-                   help="GeoJSON of WGS84 plots: print EGMS cells per plot from ground.tif (writes nothing)")
+                   help="GeoJSON of WGS84 plots: print the EGMS cells per plot, with data out of the ones that fit, "
+                        "from ground.tif (writes nothing)")
     a = p.parse_args()
     if a.plots:
         report_plots(a.plots)
