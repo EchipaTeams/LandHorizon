@@ -29,9 +29,9 @@ G3 is the hardest item and changes the contract. G4 isn't ground work, but this 
 
 | # | Work to do | Due | Waits on |
 |---|---|---|---|
-| G1 | **Done** (PR #11, 23 Nov): ground share rule (cells with data ÷ cells whose centre fits in the plot, `GROUND_MIN_SHARE` 0.5), test and `architecture.md`. **Left:** `api/test_plots.py:69` still asserts unknown ⇔ 0 cells, so make it unknown ⇔ no velocity, and measured ⇒ `n_cells` > 0; then follow L3 (switch the denominator if the area rule wins, mark 0.5 accepted) | Fri 27 | L3 |
+| G1 | **Done** (PR #11, 23 Nov): ground share rule (cells with data ÷ cells whose centre fits in the plot, `GROUND_MIN_SHARE` 0.5), test and `architecture.md`. **Left:** `api/test_plots.py:69` still asserts unknown ⇔ 0 cells, so make it unknown ⇔ no velocity, and measured ⇒ `n_cells` > 0; L3 kept this denominator and accepted 0.5 (25 Nov, `architecture.md` updated), so only the test is left | Fri 27 | — |
 | G2 | **Done** (PR #11): checked on the real `ground.tif` that `edge-50` (1 of 2 cells) and `edge-65` (4 of 8) stay measured and the other 18 stay unknown. **Left:** say so in the data-test table (`architecture.md`, "Cells per plot") | Fri 27 | G1 |
-| G3 | Cropland share field: cut WorldCover 2021 to the flood grid (reuse `checks/cropland_share/cropland_share.py`), compute the cropland share of the plot's flagged pixels in the API. `null` when nothing is flagged, flood is unknown or WorldCover has no data. Tests, `architecture.md`, PR marked as a contract change | Sat 28 | L4 |
+| G3 | Cropland share field `flood.cropland_share: float \| None` (agreed in L4): cut WorldCover 2021 to the flood grid (reuse `checks/cropland_share/cropland_share.py`), compute the cropland share of the plot's flagged pixels in the API. `null` when nothing is flagged, flood is unknown or WorldCover has no data. Tests, `architecture.md`, PR marked as a contract change | Sat 28 | L4 |
 | G4 | Deploy the API: Dockerfile and `docker-compose.yml` (COGs from a volume), a public URL, and a reverse proxy so the website and `/evidence` share one domain ([evidence-request.md](evidence-request.md#deployment-not-decided-yet)). Move docker-compose from W4 to now in `architecture.md` | Fri 27 | — |
 
 
@@ -51,13 +51,14 @@ Tuesday's decisions unblock Ground (L3, L4) and the scoring (L6), so they come f
 |---|---|---|---|
 | L1 | **Done** (25 Nov): `pystac-client` dropped from `pyproject.toml` and `uv.lock` (`checks/check_gfm.py` runs it with `uv run --with`), `pipeline/check_gfm.py` moved to `checks/`; the gitignore lines came in with #12 | Mon 23 | — |
 | L2 | **Partly done** (25 Nov): Galați locked, milestone 3–4 status filled in, score format written down (L6). **Left:** the segment, after the interview summary (B1), and the law option, after Simonel (Thu 26) | Tue 24 | B1 |
-| L3 | Set the ground share threshold (0.5 proposed in PR #9) and its denominator: PR #11 divides by the cells whose centre fits in the plot, `DECISIONS.md` #5 by max(1, round(`area_ha`)). **Moved to the weekend:** run `checks/ground_share/compare.py` on the real `ground.tif`, then pick | Sun 29 | — |
-| L4 | Agree the cropland field's name and type with Ground and Website | Tue 24 | — |
+| L3 | **Done** (25 Nov): 0.5, divided by the cells whose centre fits in the plot (as built in PR #11). `checks/ground_share/compare.py` on the real `ground.tif`: same answer as max(1, round(`area_ha`)) on all 20 test plots and 97 % of 9,600 rectangles; the area rule is looser on small plots and depends on the grid | Tue 24 | — |
+| L4 | **Done** (25 Nov): `flood.cropland_share: float \| None`, the cropland share of the plot's flagged pixels, `null` (never 0) when nothing is flagged, flood is unknown or WorldCover has no data. Tell Ground (G3) and Website (W3) | Tue 24 | — |
 | L5 | Send the GFM helpdesk email (draft in `docs/research/briefs/4-emails.md`) | Tue 24 | — |
 | L6 | **Done** (25 Nov): no number; a status for flood, one for terrain and one for both, each with reasons; ground stays out (`architecture.md`, *Score format*) | Wed 25 | — |
 | L7 | Implement `overall` in that format: any core layer unknown gives `incomplete`, never low | Sun 29 | L6 |
 | L8 | Review the flood PRs, the cropland PR and the deploy; check the website repo | Thu 26 – Sat 28 | F1, G3, G4 |
 | L9 | Decide #2: held-out windows and limits for the per-algorithm test | Sat 28 | F2 |
+| L10 | Wire the plot request end to end as [evidence-request.md](evidence-request.md) describes: the website sends `feature.geometry` to `POST /evidence` by its relative path (Vite proxy locally) and handles 200 / 422 / 503; pick the reverse proxy or CORS with the deploy (G4), never CORS `*` | Sun 29 | G4 |
 
 ## Risks
 - **The batch runtime (F3) is unknown.** Reading 8,543 scenes at 640 m was already long, and the build reads at 20 m. Fallback: keep 2024 only and move the extension to W4.
