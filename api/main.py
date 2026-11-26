@@ -1,8 +1,8 @@
 """LandHorizon API.
 
 /evidence returns, for the plot: real terrain (HAND), real flood history (Copernicus GFM) with the cropland
-share of its flagged pixels (ESA WorldCover), real ground motion (EGMS) and the plot's real size. overall is
-still a fixed mock: its format waits for the customer interviews.
+share of each flood date's wet pixels (ESA WorldCover), real ground motion (EGMS) and the plot's real size.
+overall is still a fixed mock: its format waits for the customer interviews.
 """
 import os
 from datetime import date, timedelta
@@ -58,7 +58,7 @@ class Flood(BaseModel):
     flood_dates: list[date]          # days a satellite pass saw water on the plot (see FLOOD_DATE_MIN_SHARE)
     n_passes: int                    # typical number of passes that observed each observed pixel of the plot
     flooded_fraction: float | None   # share of the observed plot ever seen flooded; None when unknown
-    cropland_share: float | None     # share of the flagged pixels that WorldCover maps as cropland; None when not computed
+    cropland_share: list[float | None]  # one per flood date: cropland share of that day's wet pixels; None = no data
     algorithm_version: str
     period_start: date               # first day of the flood history (inclusive)
     period_end: date                 # last day of the flood history (inclusive)
@@ -93,7 +93,7 @@ class Evidence(BaseModel):
 MOCK = Evidence(
     plot=Plot(area_ha=0.8, n_pixels=80),
     flood=Flood(status="measured", observed_fraction=1.0, flood_dates=[date(2024, 9, 15)], n_passes=212,
-                flooded_fraction=0.42, cropland_share=0.6, algorithm_version="0.1",
+                flooded_fraction=0.42, cropland_share=[0.6], algorithm_version="0.1",
                 period_start=date(2024, 1, 1), period_end=date(2024, 12, 31)),
     ground=Ground(status="unknown", velocity_mm_yr=None, n_cells=0, release="2019-2023"),
     terrain=Terrain(status="measured", hand_m=1.7),
@@ -128,10 +128,8 @@ def read_plot(path: Path, polygon: Polygon, missing_hint: str, all_touched: bool
         return np.ma.masked_array(data, np.broadcast_to(outside, data.shape).copy()), src.descriptions, src.tags()
 
 
-def cropland_share(polygon: Polygon, flagged) -> float | None:
-    """Share of the flagged pixels (on the flood grid) that WorldCover maps as cropland, where GFM's spring false
-    alarm on tilled fields happens. A caveat, not a verdict: it doesn't say a flood date is false.
-    None when no pixel is flagged or WorldCover has no data on them, never 0."""
+def land_cover(polygon: Polygon) -> np.ndarray:
+    """WorldCover class codes under the plot, on the flood grid (0 = no data and outside the plot)."""
     if not WORLDCOVER_PATH.exists():
         raise HTTPException(503, f"Layer missing at {WORLDCOVER_PATH}; run pipeline/worldcover.py")
     with rasterio.open(WORLDCOVER_PATH) as c, rasterio.open(FLOOD_PATH) as f:
@@ -142,8 +140,15 @@ def cropland_share(polygon: Polygon, flagged) -> float | None:
         raise HTTPException(503, f"{WORLDCOVER_PATH.name} is not on the grid of {FLOOD_PATH.name}; rebuild it with "
                                  f"pipeline/worldcover.py")
     cover, _, _ = read_plot(WORLDCOVER_PATH, polygon, "run pipeline/worldcover.py")
-    codes = cover[0].filled(0)[flagged]  # 0 = no data
-    codes = codes[codes > 0]
+    return cover[0].filled(0)
+
+
+def cropland_share(cover: np.ndarray, wet) -> float | None:
+    """Share of the wet pixels that WorldCover maps as cropland, where GFM's spring false alarm on tilled fields
+    happens. A caveat, not a verdict: it doesn't say a flood date is false.
+    None when WorldCover has no data on them, never 0."""
+    codes = cover[wet]
+    codes = codes[codes > 0]  # 0 = no data: left out, not counted as "not cropland"
     return round(float((codes == CROPLAND).mean()), 3) if codes.size else None
 
 
@@ -161,13 +166,17 @@ def flood(polygon: Polygon) -> Flood:
     behind = dict(observed_fraction=round(float(observed), 3),
                   n_passes=int(np.median(n_passes.filled(0)[seen])) if seen.any() else 0,
                   algorithm_version="gfm-ensemble", **period)
-    flagged = seen & (n_flooded.filled(0) > 0)  # the pixels flooded_fraction counts
     # Read first, so a missing layer is a 503 whatever the plot (a broken server, not missing data).
-    cropland = cropland_share(polygon, flagged)
+    cover = land_cover(polygon)
     if observed < MIN_OBSERVED_FRACTION:  # GFM excluded (most of) the plot: high ground, city, forest, radar shadow
-        return Flood(status="unknown", flood_dates=[], flooded_fraction=None, cropland_share=None, **behind)
-    dates = sorted({date.fromisoformat(name[:10]) for name, band in zip(names[2:], data[2:])
-                    if band.filled(0)[seen].mean() >= FLOOD_DATE_MIN_SHARE})
+        return Flood(status="unknown", flood_dates=[], flooded_fraction=None, cropland_share=[], **behind)
+    passes = [(date.fromisoformat(name[:10]), band.filled(0)) for name, band in zip(names[2:], data[2:])]
+    dates = sorted({day for day, band in passes if band[seen].mean() >= FLOOD_DATE_MIN_SHARE})
+    # One share per flood date, from the pixels seen wet that day by any pass. The check behind the field compared
+    # single events; pooling every date would drift, as the false alarm recurs each spring, towards "how much of
+    # the plot is farmland".
+    cropland = [cropland_share(cover, seen & np.any([band > 0 for day, band in passes if day == d], axis=0))
+                for d in dates]
     return Flood(status="measured", flood_dates=dates,
                  flooded_fraction=round(float((n_flooded.filled(0)[seen] > 0).mean()), 3),
                  cropland_share=cropland, **behind)

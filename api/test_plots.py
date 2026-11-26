@@ -64,10 +64,10 @@ def test_unknown_rule(plot):
     flood, terrain, ground = e["flood"], e["terrain"], e["ground"]
     if flood["observed_fraction"] < main.MIN_OBSERVED_FRACTION:
         assert (flood["status"], flood["flooded_fraction"], flood["flood_dates"]) == ("unknown", None, [])
-        assert flood["cropland_share"] is None
     else:
         assert flood["status"] == "measured" and flood["flooded_fraction"] is not None and flood["n_passes"] > 0
-    assert flood["cropland_share"] is None or 0 <= flood["cropland_share"] <= 1
+    assert len(flood["cropland_share"]) == len(flood["flood_dates"])  # one share per flood date
+    assert all(s is None or 0 <= s <= 1 for s in flood["cropland_share"])
     assert (terrain["status"] == "unknown") == (terrain["hand_m"] is None)
     assert (ground["status"] == "unknown") == (ground["velocity_mm_yr"] is None)
     assert ground["status"] == "unknown" or ground["n_cells"] > 0  # unknown may still have cells, below GROUND_MIN_SHARE
@@ -99,18 +99,18 @@ def test_no_flood_date_in_the_spring_no_flood_window(plot):
 def table():
     """One line per plot: what the API answers. Run this file as a script to print it."""
     print(f"{'plot':20s} {'ha':>5s}  {'expect':18s} {'flood':8s} {'seen':>5s} {'passes':>6s} {'flooded':>7s} "
-          f"{'HAND m':>6s} {'cells':>5s} {'mm/yr':>5s} {'crop':>5s}  flood dates")
+          f"{'HAND m':>6s} {'cells':>5s} {'mm/yr':>5s}  flood dates (cropland share)")
     for p in PLOTS:
         props, e = p["properties"], evidence(p)
         f, t, g = e["flood"], e["terrain"], e["ground"]
         flooded = "-" if f["flooded_fraction"] is None else f"{f['flooded_fraction']:.0%}"
         hand = "-" if t["hand_m"] is None else f"{t['hand_m']:.1f}"
         motion = "-" if g["velocity_mm_yr"] is None else f"{g['velocity_mm_yr']:.1f}"
-        crop = "-" if f["cropland_share"] is None else f"{f['cropland_share']:.0%}"
         print(f"{props['name']:20s} {props['area_ha']:5.1f}  {props['expect']:18s} {f['status']:8s} "
               f"{f['observed_fraction']:5.0%} {f['n_passes']:6d} {flooded:>7s} {hand:>6s} {g['n_cells']:5d} "
-              f"{motion:>5s} {crop:>5s}  "
-              f"{', '.join(d[5:] for d in f['flood_dates'])}")
+              f"{motion:>5s}  "
+              + ", ".join(f"{d[5:]} ({'-' if s is None else f'{s:.0%}'})"
+                          for d, s in zip(f["flood_dates"], f["cropland_share"])))
 
 
 if __name__ == "__main__":

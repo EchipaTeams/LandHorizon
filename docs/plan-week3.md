@@ -22,7 +22,7 @@ F1 was the week's bottleneck. It merged on Wed 25 (PR #15), so F2 and F3 can sta
 | F3 | Time a one-month build first, then run the full batch 2015-01-01 → 2025-04-13 and put `flood_gfm.tif` on the Drive. **Keep the flood grid** (`flood_common.grid()`, same AOI): the API needs `worldcover.tif` (G3, PR #20) on exactly that grid and answers 503 otherwise. If the grid has to change, rerun `pipeline/worldcover.py` (seconds) and put both files on the Drive together | Sat 28 | F1 |
 | F4 | **Done** (PR #14, 25 Nov): criterion pushed before the run, then `gfm_score.py 2025-04-20 2025-05-06` logged in `flood-validation.md`. **v4 fails too:** 15.81 % of land flagged in ≥1 pass against the 1 % limit (2024 on v3: 9.06 %). The cause is unknown: 98 % of the flags are outside the polder, on green land, so tilled fields don't explain them. The method isn't changed, and under 1b the history stops before v4 anyway. **Not checked yet:** what grew under 2024's flags outside the polder | Wed 25 | — |
 | F5 | **Done** (PR #14): the README credits JRC Global Surface Water v1.4 (Pekel et al., 2016) | Wed 25 | — |
-| F6 | With the new `flood_gfm.tif`: run `api/test_plots.py`, check `period_end` reads 2025-04-13, update the 20-plot flood numbers in the docs, the `crop` column included (`api/test_plots.py` now also needs `worldcover.tif` on the same grid) | Sun 29 | F3 |
+| F6 | With the new `flood_gfm.tif`: run `api/test_plots.py`, check `period_end` reads 2025-04-13, update the 20-plot flood numbers in the docs, the cropland share per date included (the numbers in `architecture.md` are from the superseded pooled version) (`api/test_plots.py` now also needs `worldcover.tif` on the same grid) | Sun 29 | F3 |
 
 ## Ground: Alex, Miriam
 G3 is the hardest item and changes the contract. G4 isn't ground work, but this team has the capacity: G1 and G2 are merged (#11, #16), so G4 comes next.
@@ -31,7 +31,7 @@ G3 is the hardest item and changes the contract. G4 isn't ground work, but this 
 |---|---|---|---|
 | G1 | **Done** (PR #11, merged 25 Nov): ground share rule (cells with data ÷ cells whose centre fits in the plot, `GROUND_MIN_SHARE` 0.5), test and `architecture.md`; `api/test_plots.py` asserts unknown ⇔ no velocity and measured ⇒ `n_cells` > 0. L3 kept this denominator and accepted 0.5 (25 Nov) | Fri 27 | — |
 | G2 | **Done** (PR #11, PR #16 25 Nov): checked on the real `ground.tif` that `edge-50` (1 of 2 cells) and `edge-65` (4 of 8) stay measured and the other 18 stay unknown. #16: `ground.py --plots` prints the cells that fit and the share with data, and the data-test table (`architecture.md`, "Cells per plot") says so | Fri 27 | — |
-| G3 | Cropland share field `flood.cropland_share: float \| None` (agreed in L4): cut WorldCover 2021 to the flood grid (reuse `checks/cropland_share/cropland_share.py`), compute the cropland share of the plot's flagged pixels in the API. `null` when nothing is flagged, flood is unknown or WorldCover has no data. Tests, `architecture.md`, PR marked as a contract change | Sat 28 | L4 |
+| G3 | Cropland share field `flood.cropland_share: float \| None` (agreed in L4): cut WorldCover 2021 to the flood grid (reuse `checks/cropland_share/cropland_share.py`), compute the cropland share of the plot's flagged pixels in the API. `null` when nothing is flagged, flood is unknown or WorldCover has no data. Tests, `architecture.md`, PR marked as a contract change. **Built in PR #20** (26 Nov); in the review the lead changed the type to `list[float \| None]`, one share per flood date | Sat 28 | L4 |
 | G4 | Deploy the API: Dockerfile and `docker-compose.yml` (COGs from a volume), a public URL, and a reverse proxy so the website and `/evidence` share one domain ([evidence-request.md](evidence-request.md#deployment-not-decided-yet)). Move docker-compose from W4 to now in `architecture.md` | Fri 27 | — |
 
 
@@ -41,7 +41,7 @@ G3 is the hardest item and changes the contract. G4 isn't ground work, but this 
 |---|---|---|---|
 | W1 | Show the farmland caveat sentence when `flood_dates` is not empty (exact text in `docs/research/DECISIONS.md`, decision 3) | Tue 24 | — |
 | W2 | Deploy the website behind the API's domain, with the MOCK label visible whenever mock mode is on | Sun 29 | G4 |
-| W3 | Regenerate the types after the cropland PR; show the cropland share with "can include" wording and `null` as unknown | Sun 29 | G3 |
+| W3 | Regenerate the types after the cropland PR (#20); show each flood date's cropland share next to that date (`cropland_share[i]` belongs to `flood_dates[i]`), with "can include" wording and `null` as unknown | Sun 29 | G3 |
 | W4 | Start the print CSS for the PDF (a W4 item, only if time is left) | Sun 29 | — |
 
 ## Lead and API: Matei
