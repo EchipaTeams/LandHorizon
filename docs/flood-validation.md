@@ -306,7 +306,7 @@ Every flood test re-run with `gfm_score.py` on main after PR #15, with the **sam
 
 **How these were run**
 - **The Botoșani command wasn't recorded.** It is recovered from the log above ("2 of the 31 passes from 2018"): `2018-06-29 2018-07-12` gives 31 scenes holding these 2 missing layers, and `2018-07-13` gives 34. Ending on the label's last day is also how the September commands were written. With `2018-07-13` the ≥1 numbers are identical.
-- **The Botoșani outlines** exist only in EMS's old format (shapefiles: `EMSR293_01BOTOSANI_01DELINEATION_MAP_v1_vector.zip`, `…_MONIT01_v1_vector.zip`, from mapping.emergency.copernicus.eu). They were converted with every feature kept to the zip layout `flood_common.ems()` reads (`EMSR293_AOI01_DEL_PRODUCT_v1.zip`, `…MONIT01_v1.zip`). Check: 313.6 and 373.3 ha on the grid, against 314 and 373 logged; one shared area of interest.
+- **The Botoșani outlines** exist only in EMS's old format (shapefiles: `EMSR293_01BOTOSANI_01DELINEATION_MAP_v1_vector.zip`, `…_MONIT01_v1_vector.zip`, from mapping.emergency.copernicus.eu). They were converted with every feature kept (`checks/ems_reference/convert_old_format.py`) to the zip layout `flood_common.ems()` reads (`EMSR293_AOI01_DEL_PRODUCT_v1.zip`, `…MONIT01_v1.zip`). Check: 313.6 and 373.3 ha on the grid, against 314 and 373 logged; one shared area of interest.
 - **"Unseen = missed"** = true positives ÷ all EMS flood pixels in the area of interest, seen or not. `gfm_score.py` doesn't print it; it was computed from the `--write` output, and it reproduces the logged Galați 54.7 %.
 - **The September windows end one day early.** `… 2023-09-25` covers 12–24 Sept, while the criterion says 12–25. Re-run with `2023-09-26`: the one pass on 25 Sept 2023 (04h) saw none of the AOI, so the dry rate stays at 0.09 %. No GFM scene exists on 25 Sept 2024.
 
@@ -351,4 +351,9 @@ The 88 real flood bands of the 2024 file were repeated to 1,200 bands and writte
 - **API cost:** the API reads every band under the plot, so its time grows with the band count: about 3× for 13× the bands. If it matters later, read only the bands with flood under the plot. Not done now.
 
 ### Full run
-`uv run python pipeline/flood_gfm.py 2015-01-01 2025-05-01`, started 26 Nov 2026 17:14, detached (`setsid nohup`), log in `data/processed/flood_gfm_2015-2025.log`. The end date lies past the v3 → v4 change on purpose, so the history stops on the catalogue's version change (decision 1b) and not on a date we typed. If it dies, the same command resumes from its checkpoint (`data/processed/flood_gfm_1a_2015-01-01_2025-04-14.checkpoint.npz`).
+`uv run python pipeline/flood_gfm.py 2015-01-01 2025-05-01`. The end date lies past the v3 → v4 change on purpose, so the history stops on the catalogue's version change (decision 1b) and not on a date we typed.
+- **First start, 26 Nov 2026 17:14, stopped at 17:22 on purpose** (moved to another machine). The catalogue gave **8,543 scenes** (as the plan said), and the run printed "GFM's major version changes on 2025-04-14: the history stops before that day", so decision 1b works on the real catalogue. 51 passes were done (Jan–Apr 2015) and no scene had been dropped by 1a yet.
+- **How to run it:** detached, so closing the terminal doesn't stop it, with a timestamped log in `data/processed/` (gitignored):
+  `setsid nohup bash -c 'uv run python -u pipeline/flood_gfm.py 2015-01-01 2025-05-01 2>&1 | gawk "{print strftime(\"%F %T\"), \$0; fflush()}" >> data/processed/flood_gfm_2015-2025.log' < /dev/null > /dev/null 2>&1 &`
+  The whole pipe must be inside `setsid`, or the log writer dies with the terminal and takes the build with it. If the build dies, the same command resumes from `data/processed/flood_gfm_1a_2015-01-01_2025-04-14.checkpoint.npz`.
+- **Expected:** 5–5½ h of reading, then ~10 min of writing; 950–1,200 bands; `period_end` tag 2025-04-14 (the API reports 2025-04-13).
