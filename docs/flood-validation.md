@@ -139,6 +139,8 @@ GFM was **not tuned** on any of this data, so unlike v0.2, these are out-of-samp
 | 2 July (PRODUCT) | 314 ha | 98 % | **96.7 %** | 67.6 % | **66.0 %** |
 | 3 July (MONIT01) | 373 ha | 97 % | **99.3 %** | 58.5 % | **56.9 %** |
 
+*Re-scored under decision 1a on 26 Nov 2026 (the 2 July 16:00 pass drops out): see* Re-score under decision 1a *at the end.*
+
 - **75 % of this area is excluded** (hilly plateau), yet 97–98 % of the flood lies in the part GFM sees.
 - **Precision is far higher than at Galați.** A slow river flood stays in place and is seen by many passes. Why Galați's precision is only 27 % is **an untested hypothesis**: possibly storm-soaked fields around a short flash flood, or EMS mapping only part of the water. Neither has been checked.
 
@@ -163,7 +165,7 @@ Building the 2024 history (`flood_gfm.py`) showed 17 % of the seen AOI flagged a
 - **Fix:** pixels under an advisory flag now count as **not seen** for that pass, as GFM's manual advises ("use with caution").
 - **Effect on validation:**
   - dry window 0.09 %, Galați recall 58.0 % / precision 27.1 %, Botoșani 96.7 % / 67.6 % (2 July) and 99.3 % / 58.5 % (3 July)
-  - the advisory layer is missing for 2 of the 31 passes from 2018; those counted as having no warnings when these numbers were made (not seen since decision 1a, 25 Nov 2026)
+  - the advisory layer is missing for 2 of the 31 passes from 2018; those counted as having no warnings when these numbers were made (not seen since decision 1a, 25 Nov 2026; re-scored in *Re-score under decision 1a* below)
 - **What's left:** most of the false alarm carried no advisory flag, so it remains. Removing it would need an optical cross-check (e.g. Sentinel-2 NDWI), which isn't built.
 - **2024 history after the fix:**
 
@@ -270,4 +272,40 @@ The fix above treats pixels under a GFM advisory flag as not seen. The lead aske
 - **A 10-year build would hit this in roughly 1 in 20–50 older passes.**
 - **Treating them as "no warnings"** lets any false alarms in them through.
 - **Treating them as "not seen"** is safer, but also drops real observations. At Botoșani it would remove a real flood scene and lower the recall.
-- **Decided by the lead (1a, 17 Nov 2026): not seen,** per scene. In `gfm_score.passes()` since 25 Nov 2026. The scores above are from before; the re-score is still to be done.
+- **Decided by the lead (1a, 17 Nov 2026): not seen,** per scene. In `gfm_score.passes()` since 25 Nov 2026. The scores above are from before; the re-score follows.
+
+## Re-score under decision 1a, 26 Nov 2026 (F2)
+Every flood test re-run with `gfm_score.py` on main after PR #15, with the **same arguments as the first runs** (the end date is exclusive). The method wasn't changed.
+
+**Prediction, written before the runs:** no 2023 or 2024 scene lacks its advisory layer, so every Galați number stays the same, and a change would be a bug, not a result. Botoșani changes, because the 2 July 16:00 scene drops out.
+
+**Galați and the dry windows: unchanged, as predicted.** No scene was dropped in any of these runs.
+
+| Test | Arguments | Before | Under 1a | Criterion |
+|---|---|---|---|---|
+| Dry window, Sept 2023, land flagged ≥1 / ≥2 / ≥3 passes | `2023-09-12 2023-09-25` | 0.09 % | 0.09 / 0.01 / 0.00 % | ≤ 1 % |
+| Sept 2024 vs EMSR758 PRODUCT, recall ≥1 | `2024-09-12 2024-09-25 --reference …PRODUCT_v1.zip` | 58.0 % (54.7 % unseen = missed) | 58.0 % (54.7 %) | ≥ 50 % |
+| … precision ≥1 / ≥2 | same | 27.1 / 72.4 % | 27.1 / 72.4 % | |
+| Sept 2024 vs EMSR758 MONIT01, recall ≥1 | `2024-09-12 2024-09-25 --reference …MONIT01_v1.zip` | not run on GFM before | 70.0 % (65.3 % unseen = missed) | |
+| … precision ≥1 / ≥2 | same | | 16.0 / 57.5 % | |
+| Spring 2024, land flagged ≥1 / ≥2 / ≥3 | `2024-04-20 2024-05-06` | 9.06 / 2.17 / 0.32 % | 9.06 / 2.17 / 0.32 % | ≤ 1 %, fails |
+
+**Botoșani (EMSR293 AOI01), `2018-06-29 2018-07-12 --area-from-reference`:**
+
+| Outline | EMS flood | Seen by GFM | Precision ≥1 | Recall ≥1 (seen part) | Recall, unseen = missed |
+|---|---|---|---|---|---|
+| 2 July (PRODUCT) | 314 ha | 98 % → **97.6 %** | 96.7 % → **96.9 %** | 67.6 % → **65.4 %** | 66.0 % → **63.9 %** |
+| 3 July (MONIT01) | 373 ha | 97 % → **97.3 %** | 99.3 % → **99.3 %** | 58.5 % → **56.6 %** | 56.9 % → **55.0 %** |
+
+- **What 1a drops in the window:** 2 of the 31 scenes.
+  - **2 July 16:00** (`ENSEMBLE_FLOOD_20180702T160053_VV_EU020M_E060N015T3`): the only scene of that pass over the area, so the whole pass drops out. It's the real flood scene noted above.
+  - **7 July 04:12** (`ENSEMBLE_FLOOD_20180707T041222_VV_EU020M_E060N015T3`): it saw none of the area, so it changes nothing.
+- **Passes that saw the area:** 9 before, 8 now.
+- **Effect:** recall falls by about 2 points on each outline, and precision stays the same or rises slightly.
+- **For decision 2 (L9):** under 1a the ensemble's Botoșani recall at ≥1 pass is **65.4 %** (2 July) and **56.6 %** (3 July), on the seen part, as in the first table. A per-algorithm rule must reach at least **55.4 %** and **46.6 %**.
+
+**How these were run**
+- **The Botoșani command wasn't recorded.** It is recovered from the log above ("2 of the 31 passes from 2018"): `2018-06-29 2018-07-12` gives 31 scenes holding these 2 missing layers, and `2018-07-13` gives 34. Ending on the label's last day is also how the September commands were written. With `2018-07-13` the ≥1 numbers are identical.
+- **The Botoșani outlines** exist only in EMS's old format (shapefiles: `EMSR293_01BOTOSANI_01DELINEATION_MAP_v1_vector.zip`, `…_MONIT01_v1_vector.zip`, from mapping.emergency.copernicus.eu). They were converted with every feature kept to the zip layout `flood_common.ems()` reads (`EMSR293_AOI01_DEL_PRODUCT_v1.zip`, `…MONIT01_v1.zip`). Check: 313.6 and 373.3 ha on the grid, against 314 and 373 logged; one shared area of interest.
+- **"Unseen = missed"** = true positives ÷ all EMS flood pixels in the area of interest, seen or not. `gfm_score.py` doesn't print it; it was computed from the `--write` output, and it reproduces the logged Galați 54.7 %.
+- **The September windows end one day early.** `… 2023-09-25` covers 12–24 Sept, while the criterion says 12–25. Re-run with `2023-09-26`: the one pass on 25 Sept 2023 (04h) saw none of the AOI, so the dry rate stays at 0.09 %. No GFM scene exists on 25 Sept 2024.
