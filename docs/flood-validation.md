@@ -271,3 +271,46 @@ The fix above treats pixels under a GFM advisory flag as not seen. The lead aske
 - **Treating them as "no warnings"** lets any false alarms in them through.
 - **Treating them as "not seen"** is safer, but also drops real observations. At Botoșani it would remove a real flood scene and lower the recall.
 - **Decided by the lead (1a, 17 Nov 2026): not seen,** per scene. In `gfm_score.passes()` since 25 Nov 2026. The scores above are from before; the re-score is still to be done.
+
+## Flood history 2015 – 13 Apr 2025 (F3), 26 Nov 2026
+The history `flood_gfm.tif` is extended from 2024 to the whole GFM v3 period (decision 1b). The plan's fallback, if the build couldn't finish by Sat 28 Nov or made the API slow, was to keep 2024 only. Both were measured first.
+
+### One month first: June 2019
+`flood_gfm.py 2019-06-01 2019-07-01`, a two-satellite month (97 scenes, the 2019 average is 91) on the track with missing advisory layers.
+
+| Measured | |
+|---|---|
+| Scenes / passes / passes that saw the AOI | 97 / 42 / 15 |
+| Scenes dropped by 1a (no advisory layer) | 8: five 04:29 scenes, every 6 days, and three 16:00 scenes, every 12 days |
+| Passes with flood (one band each) | 11 |
+| Wall time | 3 min 46 s, of which the catalogue query took ~16 s and the final write 7 s |
+| File | 3.45 MB, 13 bands |
+
+- **The run found a bug:** on a fresh clone, without `data/processed/`, the first build crashed at pass 10, because the checkpoint was saved before the folder was created. Fixed in the same PR (`OUT.mkdir` before the loop).
+- **Extrapolated:** about 2.2 s per scene. 2015–2024 has 8,361 scenes (table above), plus 2025 up to 13 Apr, so about 8,550 scenes, which is **5–5½ hours** of reading.
+- **Bands:** 2024 has 88 flood passes from 630 scenes (14 %), June 2019 11 from 97 (11 %), so the 10-year file gets roughly **950–1,200 bands**.
+
+### How the file scales: synthetic test at 1,200 bands
+The 88 real flood bands of the 2024 file were repeated to 1,200 bands and written with `flood_gfm.py`'s own code (same checkpoint, GTiff options and COG copy). Synthetic, measurement only.
+
+| Measured at 1,200 bands | |
+|---|---|
+| Flood indices in memory / one checkpoint save | 472 MB / 0.6 s (605 MB file), every 10 passes, about 2 min over the run |
+| GTiff write | ≤ 4 min, 120 MB |
+| **COG copy as the code was** (with overviews) | **over 49 min on one core without finishing; stopped** |
+| COG copy with `NUM_THREADS=6` | still in the overview step after 30 min, using ~2.5 of 6 cores (GDAL builds overviews mostly on one thread); stopped |
+| COG copy with `OVERVIEWS="NONE"` | **5.7 min**, 100 MB |
+
+**`POST /evidence`** on the 20 test plots (in-process, warm, same machine):
+
+| `flood_gfm.tif` | Median per plot | Slowest plot |
+|---|---|---|
+| 2024 file (88 flood bands, pixel interleave, with overviews) | 0.19–0.22 s | 0.54 s |
+| Synthetic 10-year (1,202 bands, band interleave, no overviews) | 0.59 s | 1.67 s |
+
+- **Result: the build fits before Saturday and the API stays usable,** so the fallback isn't needed.
+- **One change:** the overview step would have added an hour or more, with no known end, after 5½ hours of reading, so `flood_gfm.tif` is now written without overviews. The API reads full resolution only; the old overviews were cubic-resampled, meaningless on 0/1 bands. Why, and how to revert it: *Why these choices* (COG) in [architecture.md](architecture.md).
+- **API cost:** the API reads every band under the plot, so its time grows with the band count: about 3× for 13× the bands. If it matters later, read only the bands with flood under the plot. Not done now.
+
+### Full run
+`uv run python pipeline/flood_gfm.py 2015-01-01 2025-05-01`, started 26 Nov 2026 17:14, detached (`setsid nohup`), log in `data/processed/flood_gfm_2015-2025.log`. The end date lies past the v3 → v4 change on purpose, so the history stops on the catalogue's version change (decision 1b) and not on a date we typed. If it dies, the same command resumes from its checkpoint (`data/processed/flood_gfm_1a_2015-01-01_2025-04-14.checkpoint.npz`).

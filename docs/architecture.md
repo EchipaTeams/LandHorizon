@@ -47,6 +47,12 @@ v0.2 (10 Nov 2026) set these numbers with the **dry-date test**. That test runs 
 - **GFM:** see *Flood method*. Validated better than our own method on the September tests, free, and no heavy processing on our side.
 - **Earth Engine:** has preprocessed Sentinel-1 and runs server-side. The free tier is 150 EECU-hours a month, so measure compute before the 10-year run. A commercial product would pay for compute, which is an open cost.
 - **COG (Cloud Optimized GeoTIFF):** a GeoTIFF stored in tiles with built-in overviews and an index at the start, so a reader fetches only the bytes under one plot. That index, plus data that is read-only and precomputed, is why there's **no database**.
+  - **`flood_gfm.tif` has no overviews** (26 Nov 2026, F3; approved by Sover, to be reviewed by the lead in the F3+F6 PR). It's still a COG, tiled with the index first, and the values don't change.
+    - **Why:** at the 10-year size (~1,200 bands, synthetic test), GDAL's overview step at the end of `flood_gfm.py` ran over 49 min on one core without finishing; without overviews the COG copy took 5.7 min ([flood-validation.md](flood-validation.md#flood-history-2015--13-apr-2025-f3-26-nov-2026)).
+    - **Nothing needs them today:** `api/main.py` reads full-resolution windows only. The old overviews were cubic-resampled, which means nothing on 0/1 flood bands and pass counts.
+    - **When to revert:** if TiTiler or any map view of the flood layer is added (it would read overviews when zoomed out).
+    - **How to revert:** delete `OVERVIEWS="NONE"` from the `rio_copy` call at the end of `pipeline/flood_gfm.py` (or `git revert` the commit "flood_gfm: write flood_gfm.tif without COG overviews"), then rebuild. Use nearest resampling (`OVERVIEW_RESAMPLING="NEAREST"`), not GDAL's cubic default, and expect the final write to take an hour or more at ~1,200 bands. Faster option: add the overviews afterwards, to a copy of the file, only for the bands the map shows.
+  - `hand.tif` and `ground.tif` keep their overviews.
 - **FastAPI, not Django:** Django's strengths (ORM, admin, auth) assume a database we don't have. FastAPI gives us:
   - **The contract as a Pydantic model:** the evidence JSON is checked on every request and response.
   - **Free docs:** the docs page at `/docs` is generated, nobody writes it.
