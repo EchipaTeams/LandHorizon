@@ -27,7 +27,7 @@ A running log of what the lead chose while going through the eight open question
 2. **Write decision 1b into `architecture.md`** ("Period of the flood history"), in the same commit as the code that applies it.
 3. **Flood pipeline, from decision 1b:** record `processing:version` and `flood_members` from the catalogue for each pass, and stop the history at a change of major version instead of at a hard-coded date.
 4. **Flood pipeline, from decision 1a:** in `gfm_score.passes()`, a scene without an advisory layer counts as not seen.
-5. **Re-score every flood criterion under 1a's option B, Botoșani included, before fixing decision 2's numbers.** Log before and after in `flood-validation.md`.
+5. **Re-score every flood criterion under 1a's option B, Botoșani included, before fixing decision 2's numbers.** Log before and after in `flood-validation.md`. **Done on 26 Nov (F2, PR #21):** Botoșani ensemble recall under 1a is 65.4 % and 56.6 %, so decision 2's limits are 55.4 % and 46.6 % (`flood-validation.md`, "Re-score under decision 1a").
 6. **Change "198" to 224** in `flood-validation.md` and `architecture.md`, in the same commit as item 4.
 7. **Roadmap line, from decision 1a:** "Missing GFM warning layers are treated as unknown; a weather-based stand-in is future work."
 8. **Frontend, from decision 3 (about 1 h):** when `flood_dates` is not empty, show: "On farmland, radar flood detections can include false alarms. GFM's documentation names 'certain growing conditions and agricultural practices over cropland' as a cause."
@@ -173,8 +173,8 @@ A running log of what the lead chose while going through the eight open question
 - **A first attempt is void.** It used catalogue footprints, which are the whole 300 km Equi7 tile, so it failed its own method check.
 
 **Corrections found in the 1a chat** (they also apply to the text below)
-- **Botoșani:** 96.7 % and 99.3 % are precision. Ensemble recall is 67.6 % (2 July outline) and 58.5 % (3 July).
-- **What B removes at Botoșani** is the 2 July 16:00 Sentinel-1 *pass*, not a reference outline. Both COSMO-SkyMed outlines (2 and 3 July) are still scored, against all passes from 29 Jun to 12 Jul minus the dropped one(s). How much recall falls is unknown until the re-score.
+- **Botoșani:** 96.7 % and 99.3 % are precision. Ensemble recall is 67.6 % (2 July outline) and 58.5 % (3 July) before 1a; 65.4 % and 56.6 % under 1a (re-scored 26 Nov).
+- **What B removes at Botoșani** is the 2 July 16:00 Sentinel-1 *pass*, not a reference outline. Both COSMO-SkyMed outlines (2 and 3 July) are still scored, against all passes from 29 Jun to 12 Jul minus the dropped one(s). The re-score (26 Nov) shows recall falls by about 2 points on each outline; precision stays the same or rises slightly.
 - **Spring windows:** missing scenes fall inside the 20 Apr–5 May windows that decision 2 may use: 28 Apr 2019, 22 Apr and 4 May 2020, and 29 Apr 2021. Under B those springs have fewer passes.
 
 ### Before the decision: the options, the check and its result
