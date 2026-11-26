@@ -18,7 +18,7 @@ The pipeline turns raw data into COGs **once, ahead of time**, for one pilot reg
 |---|---|---|---|---|
 | Flood (Sentinel-1; 2024 for now, ~10 years planned) | Copernicus GFM (CEMS Global Flood Monitoring), per-pass flood + exclusion layers from the EODC STAC catalogue, no account | Not downloaded: only the AOI window of each pass is read over HTTP | Locally, counted per pixel (`pipeline/flood_gfm.py`) | `flood_gfm.tif` |
 | Ground motion (EGMS Ortho) | EGMS Explorer, login, manual download | `data/raw/` | Locally, from the CSVs (csv + numpy + rasterio), rasterized once (`pipeline/ground.py`) | `ground.tif` |
-| Land cover (ESA WorldCover 2021 v200, CC BY 4.0) | Public COG on AWS (one 3°x3° tile, N45E027), no account | Not downloaded: only the AOI window is read over HTTP | Locally, warped onto the flood grid, nearest neighbour (`pipeline/worldcover.py`) | `worldcover.tif` (not read by the API yet: it is for `flood.cropland_share`, G3 / L4) |
+| Land cover (ESA WorldCover 2021 v200, CC BY 4.0) | Public COG on AWS (one 3°x3° tile, N45E027), no account | Not downloaded: only the AOI window is read over HTTP | Locally, warped onto the flood grid, nearest neighbour (`pipeline/worldcover.py`) | `worldcover.tif` |
 | Terrain (HAND) | ASF tiles (Copernicus 30 m DEM), public COGs | Not downloaded: only the AOI window is read over HTTP | Locally, rasterio merge + clip (`pipeline/hand.py`) | `hand.tif` |
 | Validation | Copernicus EMS outlines (EMSR758, EMSR293), PAZ | `data/raw/reference/` | Compared with the flood output (`pipeline/gfm_score.py`) | Precision and recall |
 
@@ -72,6 +72,11 @@ The JSON `POST /evidence` returns is the contract between backend and frontend. 
 - `flooded_fraction`: share of the *observed* part of the plot that was seen flooded at least once. **`null` when unknown** (a contract change of 10 Nov 2026; it was a plain number): a `0.0` for "never observed" would read as "never flooded", which breaks the unknown rule.
 - `flood_dates`: days a pass saw water on at least 5 % of the plot's observed pixels (`FLOOD_DATE_MIN_SHARE` in `api/main.py`). One flood seen by three passes shows up as three dates.
 - `n_passes`: the typical number of passes that observed each observed pixel of the plot. Filled for a barely observed plot too; 0 only when nothing was seen.
+- `cropland_share`: of the pixels the satellites flagged on the plot, the share that ESA WorldCover 2021 (10 m) maps as cropland (class 40), 0 to 1. **Flagged** pixels are the plot's observed pixels a pass saw flooded at least once, the ones `flooded_fraction` counts. WorldCover pixels with no data are left out of both sides of the share. **`null`** (never 0) when no pixel is flagged, when `status` is `unknown`, or when WorldCover has no data on the flagged pixels. A real `0.0` means the flagged pixels are all something else (trees, grass, built-up). Added 26 Nov 2026, a contract change: decision 3, option A (`docs/research/DECISIONS.md`), name and type agreed in L4 on 25 Nov.
+  - **Why:** GFM flags freshly tilled crop fields as water (the spring false alarm, [flood-validation.md](flood-validation.md)). On 20 Nov the check (`checks/cropland_share/cropland_share.py`) found the spring false alarm 98.9 % cropland and the real Sept 2024 flood inside EMSR758 48.6 % cropland, a gap of 50.4 points against the 20 fixed beforehand.
+  - **What it means:** a **low** share is informative: the flagged pixels are unlike the false alarm. A **high** share is ambiguous: a cropland plot inside a real flood scores high too, so about half of real flood detections carry it. It is a caveat, not a detector: it doesn't say a flood date is false, and a low share doesn't confirm one. Words that show it must say "can include", never "is".
+  - **Limits:** WorldCover's published global overall accuracy is 76.7 %; its accuracy for cropland around Galați has not been checked (no Romanian validation found, `docs/research/flood/worldcover-accuracy.md`), so don't print "77 % accurate" next to the number. It is a 2021 map applied to flood dates from 2024, so changes since 2021 aren't seen. The 20-point rule was chosen from the same two cases it was judged on; it is provisional until tested on another event. WorldCover is partly derived from Sentinel-1, so it describes land cover and never validates GFM.
+  - **Grid:** `worldcover.tif` is on exactly the grid of `flood_gfm.tif`. If it isn't (e.g. `flood_gfm.tif` was rebuilt on another grid), the API answers 503 instead of a wrong share.
 - `algorithm_version`: `gfm-ensemble`.
 - `period_start`, `period_end`: the period the flood history covers, both days inclusive (now 2024-01-01 … 2024-12-31). Read from the tags `flood_gfm.py` writes into `flood_gfm.tif`. Added 10 Nov 2026, agreed by the lead.
 
@@ -97,8 +102,8 @@ Rules:
 - Contract changes need the lead's review, because they break the frontend.
 
 ## Data and updates
-- `data/raw/` and `data/processed/` are gitignored. The COGs the API reads (`hand.tif`, `flood_gfm.tif`, `ground.tif`) are shared on the **team Drive**: copy them into `data/processed/`. The API answers 503 while one is missing, so this is the first step after cloning (README, *Run it*). It matters most for `ground.tif`: EGMS needs a login and can't be scripted. `worldcover.tif` (public data, seconds to build, ~2 MB, `pipeline/worldcover.py`) is not read by the API yet; it must be rebuilt whenever the flood grid changes.
-- `data/sample/` is committed (small files only): the 20 test plots. `api/test_main.py` builds its own tiny rasters, so `uv run pytest` passes on a clean clone; `api/test_plots.py` is skipped until the three COGs are in place.
+- `data/raw/` and `data/processed/` are gitignored. The COGs the API reads (`hand.tif`, `flood_gfm.tif`, `ground.tif`, `worldcover.tif`) are shared on the **team Drive**: copy them into `data/processed/`. The API answers 503 while one is missing, so this is the first step after cloning (README, *Run it*). It matters most for `ground.tif`: EGMS needs a login and can't be scripted. `worldcover.tif` (public data, a few seconds to build, ~2 MB) is rebuilt with `pipeline/worldcover.py` whenever the flood grid changes.
+- `data/sample/` is committed (small files only): the 20 test plots. `api/test_main.py` builds its own tiny rasters, so `uv run pytest` passes on a clean clone; `api/test_plots.py` is skipped until the four COGs are in place.
 - The deployed server reads COGs from a Docker volume or bucket URL.
 - **For the demo the data is frozen**, so validation and pitch numbers stay fixed. The pipeline stays one re-runnable command with a date range.
 - **In a real product:** a separate scheduled job, not the web app, processes new passes into a new versioned COG.
@@ -127,7 +132,7 @@ LandHorizon/
 ├── api/                         backend: FastAPI
 │   ├── main.py                  evidence contract (Pydantic) + POST /evidence; TiTiler mounts here later
 │   ├── test_main.py             tests
-│   └── test_plots.py            the 20 test plots against the real layers (skipped without all three); prints the data-test table
+│   └── test_plots.py            the 20 test plots against the real layers (skipped without all four); prints the data-test table
 ├── pipeline/                    batch jobs, run ahead of time, never while a user waits
 │   ├── flood_gfm.py             flood history from Copernicus GFM → data/processed/flood_gfm.tif
 │   ├── flood_common.py          shared by the flood scripts: AOI and grid, water masks, EMS references, scoring
@@ -146,7 +151,7 @@ LandHorizon/
 ├── data/                        gitignored, except sample/
 │   ├── raw/                     manual downloads (EGMS)
 │   │   └── reference/           flood outlines for validation (EMSR758, EMSR293, PAZ)
-│   ├── processed/               COGs the API reads (hand.tif, flood_gfm.tif, ground.tif), copied from the team Drive
+│   ├── processed/               COGs the API reads (hand.tif, flood_gfm.tif, ground.tif, worldcover.tif), copied from the team Drive
 │   └── sample/                  small files, committed: plots.geojson (the 20 test plots); small COGs (planned)
 ├── docs/
 │   ├── architecture.md          this file
