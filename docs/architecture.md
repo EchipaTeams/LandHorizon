@@ -18,6 +18,7 @@ The pipeline turns raw data into COGs **once, ahead of time**, for one pilot reg
 |---|---|---|---|---|
 | Flood (Sentinel-1; 2024 for now, ~10 years planned) | Copernicus GFM (CEMS Global Flood Monitoring), per-pass flood + exclusion layers from the EODC STAC catalogue, no account | Not downloaded: only the AOI window of each pass is read over HTTP | Locally, counted per pixel (`pipeline/flood_gfm.py`) | `flood_gfm.tif` |
 | Ground motion (EGMS Ortho) | EGMS Explorer, login, manual download | `data/raw/` | Locally, from the CSVs (csv + numpy + rasterio), rasterized once (`pipeline/ground.py`) | `ground.tif` |
+| Land cover (ESA WorldCover 2021 v200, CC BY 4.0) | Public COG on AWS (one 3°x3° tile, N45E027), no account | Not downloaded: only the AOI window is read over HTTP | Locally, warped onto the flood grid, nearest neighbour (`pipeline/worldcover.py`) | `worldcover.tif` |
 | Terrain (HAND) | ASF tiles (Copernicus 30 m DEM), public COGs | Not downloaded: only the AOI window is read over HTTP | Locally, rasterio merge + clip (`pipeline/hand.py`) | `hand.tif` |
 | Validation | Copernicus EMS outlines (EMSR758, EMSR293), PAZ | `data/raw/reference/` | Compared with the flood output (`pipeline/gfm_score.py`) | Precision and recall |
 
@@ -77,6 +78,12 @@ The JSON `POST /evidence` returns is the contract between backend and frontend. 
 - `flooded_fraction`: share of the *observed* part of the plot that was seen flooded at least once. **`null` when unknown** (a contract change of 10 Nov 2026; it was a plain number): a `0.0` for "never observed" would read as "never flooded", which breaks the unknown rule.
 - `flood_dates`: days a pass saw water on at least 5 % of the plot's observed pixels (`FLOOD_DATE_MIN_SHARE` in `api/main.py`). One flood seen by three passes shows up as three dates.
 - `n_passes`: the typical number of passes that observed each observed pixel of the plot. Filled for a barely observed plot too; 0 only when nothing was seen.
+- `cropland_share`: **one value per flood date**, a list of the same length and order as `flood_dates`. Each value: of the plot's observed pixels seen wet on that day (by any pass of the day), the share that ESA WorldCover 2021 (10 m) maps as cropland (class 40), 0 to 1. WorldCover pixels with no data are left out of both sides of the share. An entry is **`null`** (never 0) when WorldCover has no data on that day's wet pixels. The list is **empty** when `flood_dates` is (nothing flagged, or `status` `unknown`). A real `0.0` means that day's wet pixels are all something else (trees, grass, built-up). Added 26 Nov 2026, a contract change: decision 3, option A (`docs/research/DECISIONS.md`); L4 agreed the name and `float | None` on 25 Nov, and the lead changed it to one value per date in the PR #20 review the same day, before the website used it.
+  - **Why per date:** the check that justified the field compared single events. One share over every pixel ever flagged would mix all dates, and as the spring false alarm comes back each year, a 10-year history would drift towards "how much of the plot is farmland", saying nothing about the detections. Per date it stays what the check measured, and the website can attach the caveat to the dates it concerns.
+  - **Why:** GFM flags freshly tilled crop fields as water (the spring false alarm, [flood-validation.md](flood-validation.md)). On 20 Nov the check (`checks/cropland_share/cropland_share.py`) found the spring false alarm 98.9 % cropland and the real Sept 2024 flood inside EMSR758 48.6 % cropland, a gap of 50.4 points against the 20 fixed beforehand.
+  - **What it means:** a **low** share is informative: the flagged pixels are unlike the false alarm. A **high** share is ambiguous: a cropland plot inside a real flood scores high too, so about half of real flood detections carry it. It is a caveat, not a detector: it doesn't say a flood date is false, and a low share doesn't confirm one. Words that show it must say "can include", never "is".
+  - **Limits:** WorldCover's published global overall accuracy is 76.7 %; its accuracy for cropland around Galați has not been checked (no Romanian validation found, `docs/research/flood/worldcover-accuracy.md`), so don't print "77 % accurate" next to the number. It is a 2021 map applied to flood dates from 2024, so changes since 2021 aren't seen. The 20-point rule was chosen from the same two cases it was judged on; it is provisional until tested on another event. WorldCover is partly derived from Sentinel-1, so it describes land cover and never validates GFM.
+  - **Grid:** `worldcover.tif` is on exactly the grid of `flood_gfm.tif`. If it isn't (e.g. `flood_gfm.tif` was rebuilt on another grid), the API answers 503 instead of a wrong share.
 - `algorithm_version`: `gfm-ensemble`.
 - `period_start`, `period_end`: the period the flood history covers, both days inclusive (now 2024-01-01 … 2024-12-31). Read from the tags `flood_gfm.py` writes into `flood_gfm.tif`. Added 10 Nov 2026, agreed by the lead.
 
@@ -102,8 +109,8 @@ Rules:
 - Contract changes need the lead's review, because they break the frontend.
 
 ## Data and updates
-- `data/raw/` and `data/processed/` are gitignored. The COGs the API reads (`hand.tif`, `flood_gfm.tif`, `ground.tif`) are shared on the **team Drive**: copy them into `data/processed/`. The API answers 503 while one is missing, so this is the first step after cloning (README, *Run it*). It matters most for `ground.tif`: EGMS needs a login and can't be scripted.
-- `data/sample/` is committed (small files only): the 20 test plots. `api/test_main.py` builds its own tiny rasters, so `uv run pytest` passes on a clean clone; `api/test_plots.py` is skipped until the three COGs are in place.
+- `data/raw/` and `data/processed/` are gitignored. The COGs the API reads (`hand.tif`, `flood_gfm.tif`, `ground.tif`, `worldcover.tif`) are shared on the **team Drive**: copy them into `data/processed/`. The API answers 503 while one is missing, so this is the first step after cloning (README, *Run it*). It matters most for `ground.tif`: EGMS needs a login and can't be scripted. `worldcover.tif` (public data, a few seconds to build, ~2 MB) is rebuilt with `pipeline/worldcover.py` whenever the flood grid changes.
+- `data/sample/` is committed (small files only): the 20 test plots. `api/test_main.py` builds its own tiny rasters, so `uv run pytest` passes on a clean clone; `api/test_plots.py` is skipped until the four COGs are in place.
 - The deployed server reads COGs from a Docker volume or bucket URL.
 - **For the demo the data is frozen**, so validation and pitch numbers stay fixed. The pipeline stays one re-runnable command with a date range.
 - **In a real product:** a separate scheduled job, not the web app, processes new passes into a new versioned COG.
@@ -132,7 +139,7 @@ LandHorizon/
 ├── api/                         backend: FastAPI
 │   ├── main.py                  evidence contract (Pydantic) + POST /evidence; TiTiler mounts here later
 │   ├── test_main.py             tests
-│   └── test_plots.py            the 20 test plots against the real layers (skipped without all three); prints the data-test table
+│   └── test_plots.py            the 20 test plots against the real layers (skipped without all four); prints the data-test table
 ├── pipeline/                    batch jobs, run ahead of time, never while a user waits
 │   ├── flood_gfm.py             flood history from Copernicus GFM → data/processed/flood_gfm.tif
 │   ├── flood_common.py          shared by the flood scripts: AOI and grid, water masks, EMS references, scoring
@@ -143,13 +150,15 @@ LandHorizon/
 │   ├── s1_preprocess.xml        SNAP graph for flood_local.py (the same steps as Earth Engine's S1_GRD)
 │   ├── test_flood_local.py      tests for the local flood method
 │   ├── hand.py                  HAND for the AOI → data/processed/hand.tif
-│   └── ground.py                EGMS Ortho U CSVs → data/processed/ground.tif
+│   ├── ground.py                EGMS Ortho U CSVs → data/processed/ground.tif
+│   ├── worldcover.py            ESA WorldCover 2021 cut to the flood grid → data/processed/worldcover.tif
+│   └── test_worldcover.py       tests for the WorldCover cut
 ├── web/                         frontend decisions; the code is in EchipaTeams/demo-repository (React + TypeScript + Vite + Tailwind + MapLibre)
 │   └── README.md                frontend decisions, generated types and mock, how the website talks to the API
 ├── data/                        gitignored, except sample/
 │   ├── raw/                     manual downloads (EGMS)
 │   │   └── reference/           flood outlines for validation (EMSR758, EMSR293, PAZ)
-│   ├── processed/               COGs the API reads (hand.tif, flood_gfm.tif, ground.tif), copied from the team Drive
+│   ├── processed/               COGs the API reads (hand.tif, flood_gfm.tif, ground.tif, worldcover.tif), copied from the team Drive
 │   └── sample/                  small files, committed: plots.geojson (the 20 test plots); small COGs (planned)
 ├── docs/
 │   ├── architecture.md          this file
@@ -186,6 +195,11 @@ About 20 realistic plots around Galați, mostly non-urban, at three sizes (under
   - **Cells that fit, and the share with data** (25 Nov 2026; the API decides a plot's status from this share, so `--plots` now prints it, but only reports it: the threshold lives in `api/main.py`). Same command. The cells whose centre is inside a plot, empty ones included, are 0.7 / 2.2 / 15.6 per plot (under 1 ha / 1–5 ha / over 5 ha); the ones with data are 0.0 / 0.1 / 0.8, so the share with data is 0 % / 6 % / 5 % of the cells that fit. Two plots, `plateau-1` and `water-edge-1`, are smaller than a cell: no cell has its centre inside (0 of 0, share not defined, unknown). `edge-50` is 1 of 2 cells (50 %) and `edge-65` is 4 of 8 (50 %); the other 16 plots with a cell inside have 0 with data.
   - **In the API (16 Nov 2026):** `POST /evidence` uses the same rule, a cell's centre inside the plot (`read_plot(..., all_touched=False)` in `api/main.py`), and gives the same cells and medians for all 20 plots: `edge-50` 1 cell, −4.6 mm/yr; `edge-65` 4 cells, 0.4 mm/yr; the other 18 unknown.
   - **With the share rule** (`GROUND_MIN_SHARE` 0.5 in `api/main.py`, merged in #11; checked on 25 Nov 2026 by calling `ground()` on the 20 plots with that `api/main.py` and the real `ground.tif`): `edge-50` and `edge-65` stay `measured` (`n_cells` 1 and 4, −4.6 and 0.4 mm/yr), the other 18 stay `unknown`. Both sit **exactly at** the 0.5 threshold, 50 % each, and exactly at it counts as measured: a threshold above 0.5 would turn both `unknown`, and no test plot would be `measured`.
+- **Cropland share on the 20 plots** (26 Nov 2026, G3; `flood.cropland_share`, see *The evidence contract*). `uv run pytest` skips the 34 tests of `api/test_plots.py` unless `data/processed/` holds `hand.tif`, `ground.tif`, `worldcover.tif` and a `flood_gfm.tif` covering 2024 (`pipeline/worldcover.py` builds the third in seconds). With all four, `uv run pytest` gives 70 passed and 4 xfailed; the 4 xfails are the known spring false alarm and are expected. `uv run python api/test_plots.py` prints the table, each flood date followed by its cropland share. **The results below are from the first, pooled version** (one share over every pixel ever flagged, before the PR #20 review made it per date), with the flood file built 10 Nov 2026. They are superseded and must be re-run with the per-date field (F6, on the F3 rebuild):
+  - **Spring false alarm** (`polder-1/2/3`, `spring-west-1`): 100 % cropland on all four.
+  - **Real Sept 2024 flood** (`flood-pechea-1/2/3`, `flood-north-1`): 18 %, 27 %, 100 %, 100 %. Pooled, these mix the September pixels with any spring flags on the same plot, so the two 100 % values may not be the September flood's own share.
+  - **`null`** where nothing is flagged (`floodplain-dry-*`, `water-edge-1`, `manta-wetland-1`) and where flood is `unknown` (now an empty list); `edge-65` is a real 0 %: flagged on 25 May and 9 Aug, none of it cropland.
+  - Re-run on the rebuilt flood file (F3). Details in [research/DECISIONS.md](research/DECISIONS.md), decision 3.
 - **Flood reference:** recheck EMSR758 and the PAZ outline.
 - **HAND:** confirmed on 8 Nov; the tiles open over HTTP.
 - **Earth Engine:** measure the EECU-hours of one run (Tasks tab). The dry-date test plus two full 10-year runs must fit the 150 EECU-h/month free tier. Otherwise use 2019–2024.

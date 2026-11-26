@@ -5,7 +5,7 @@ Read `docs/architecture.md` before changing anything: it records what the team a
 ## Commands
 - `uv sync`: install the exact locked dependencies (Python 3.14)
 - `uv run fastapi dev api/main.py`: run the API, docs at http://127.0.0.1:8000/docs
-- The API needs `hand.tif`, `flood_gfm.tif` and `ground.tif` in `data/processed/`: copy them from the team Drive, or build them with `pipeline/hand.py`, `pipeline/flood_gfm.py` and `pipeline/ground.py` (EGMS login, manual download)
+- The API needs `hand.tif`, `flood_gfm.tif`, `ground.tif` and `worldcover.tif` in `data/processed/`: copy them from the team Drive, or build them with `pipeline/hand.py`, `pipeline/flood_gfm.py`, `pipeline/ground.py` (EGMS login, manual download) and `pipeline/worldcover.py`
 - `uv run pytest`: tests
 - `uv run python pipeline/flood_earthengine.py --help`: fallback flood pipeline (needs `earthengine authenticate` and `GEE_PROJECT`)
 
