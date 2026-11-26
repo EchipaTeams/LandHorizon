@@ -140,7 +140,10 @@ def main():
         dst.update_tags(source="Copernicus GFM ensemble flood extent + exclusion mask",
                         period_start=a.start.isoformat(), period_end=end,
                         gfm_versions=json.dumps(versions([f for f in feats if f["id"] in used]), separators=(",", ":")))
-    rio_copy(tmp, PATH, driver="COG", compress="deflate", interleave="band", BIGTIFF="IF_SAFER")
+    # No overviews (26 Nov 2026, F3): at ~1,200 bands GDAL's overview step ran over 49 min without finishing
+    # (5.7 min without it), and the API reads full resolution only. Revert by deleting OVERVIEWS="NONE";
+    # TiTiler would need overviews, built with nearest resampling (0/1 bands). See architecture.md, "Why these choices".
+    rio_copy(tmp, PATH, driver="COG", compress="deflate", interleave="band", BIGTIFF="IF_SAFER", OVERVIEWS="NONE")
     tmp.unlink()
     checkpoint.unlink(missing_ok=True)
     seen = n_passes > 0
