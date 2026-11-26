@@ -16,11 +16,12 @@ Full tree: [docs/architecture.md](docs/architecture.md#repository-layout).
 ## Run it
 Needs Python 3.14 and [uv](https://docs.astral.sh/uv/).
 
-The API reads three COGs from `data/processed/` and answers 503 while one is missing. The quickest way to get them is to copy `hand.tif`, `flood_gfm.tif` and `ground.tif` from the team Drive into `data/processed/` (ask the team for access). Or build them yourself:
+The API reads four COGs from `data/processed/` and answers 503 while one is missing. The quickest way to get them is to copy `hand.tif`, `flood_gfm.tif`, `ground.tif` and `worldcover.tif` from the team Drive into `data/processed/` (ask the team for access). Or build them yourself:
 ```
 uv run python pipeline/hand.py      # data/processed/hand.tif (~20 MB, public data)
 uv run python pipeline/flood_gfm.py 2024-01-01 2025-01-01   # data/processed/flood_gfm.tif (public data, no account, ~1 h)
 uv run python pipeline/ground.py    # data/processed/ground.tif; needs the EGMS tiles in data/raw/egms/ (login, see the script)
+uv run python pipeline/worldcover.py   # data/processed/worldcover.tif (~2 MB, public data, seconds); on the grid of flood_gfm.tif
 ```
 
 Then:
@@ -50,4 +51,4 @@ set -a; source .env; set +a
 uv run python pipeline/flood_local.py --event 2024-09-12 2024-09-25
 ```
 
-Contains modified Copernicus Sentinel data, processed with ESA SNAP, and modified Copernicus Emergency Management Service information (GFM). Permanent water: JRC Global Surface Water v1.4 (Pekel et al., 2016, Nature 540, 418–422, [doi:10.1038/nature20584](https://doi.org/10.1038/nature20584)). Source: EC JRC/Google.
+Contains modified Copernicus Sentinel data, processed with ESA SNAP, and modified Copernicus Emergency Management Service information (GFM). Permanent water: JRC Global Surface Water v1.4 (Pekel et al., 2016, Nature 540, 418–422, [doi:10.1038/nature20584](https://doi.org/10.1038/nature20584)). Source: EC JRC/Google. Land cover: © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium (CC BY 4.0).
