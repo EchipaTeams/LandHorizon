@@ -132,12 +132,16 @@ def cropland_share(polygon: Polygon, flagged) -> float | None:
     """Share of the flagged pixels (on the flood grid) that WorldCover maps as cropland, where GFM's spring false
     alarm on tilled fields happens. A caveat, not a verdict: it doesn't say a flood date is false.
     None when no pixel is flagged or WorldCover has no data on them, never 0."""
-    cover, _, _ = read_plot(WORLDCOVER_PATH, polygon, "run pipeline/worldcover.py")
+    if not WORLDCOVER_PATH.exists():
+        raise HTTPException(503, f"Layer missing at {WORLDCOVER_PATH}; run pipeline/worldcover.py")
     with rasterio.open(WORLDCOVER_PATH) as c, rasterio.open(FLOOD_PATH) as f:
         same_grid = (c.crs, c.transform, c.shape) == (f.crs, f.transform, f.shape)
+    # Checked before read_plot: a worldcover.tif smaller than the flood grid would otherwise answer 422 ("draw it
+    # inside the area"), blaming the user's plot for a server that needs worldcover.tif rebuilt.
     if not same_grid:  # worldcover.tif must be pixel for pixel on the grid of flood_gfm.tif
         raise HTTPException(503, f"{WORLDCOVER_PATH.name} is not on the grid of {FLOOD_PATH.name}; rebuild it with "
                                  f"pipeline/worldcover.py")
+    cover, _, _ = read_plot(WORLDCOVER_PATH, polygon, "run pipeline/worldcover.py")
     codes = cover[0].filled(0)[flagged]  # 0 = no data
     codes = codes[codes > 0]
     return round(float((codes == CROPLAND).mean()), 3) if codes.size else None

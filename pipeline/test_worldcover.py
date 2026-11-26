@@ -39,7 +39,7 @@ def test_outside_the_tile_is_no_data(source, monkeypatch):
 def test_output_is_on_the_flood_grid(source):
     worldcover.main()
     transform, width, height = flood_common.grid()
-    with rasterio.open(worldcover.OUT) as dst:
+    with rasterio.open(worldcover.OUT) as dst, rasterio.open(source) as src:
         assert (dst.transform, dst.width, dst.height) == (transform, width, height)
         assert dst.crs.to_epsg() == 32635 and dst.nodata == 0 and dst.dtypes == ("uint8",)
-        assert (dst.read(1) == worldcover.cut(rasterio.open(source))).all()
+        assert (dst.read(1) == worldcover.cut(src)).all()

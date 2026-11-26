@@ -19,10 +19,10 @@ F1 was the week's bottleneck. It merged on Wed 25 (PR #15), so F2 and F3 can sta
 |---|---|---|---|
 | F1 | **Done** (PR #15, 25 Nov): **1a:** a scene with no advisory layer counts as not seen, and its neighbours in the same pass still count. **1b:** `flood_gfm.py` stops the history on the day GFM's major version changes (v3.1.0 ends 13 Apr 2025, so `period_end` follows from the catalogue) and writes each pass's version and contributing algorithms to the `gfm_versions` tag, from the scenes that counted only. Same PR: `architecture.md` period section, 198 → 224 in both docs, tests | Wed 25 | — |
 | F2 | Re-score every criterion under 1a: Sept 2023 dry, Sept 2024 event, spring 2024, Botoșani 2018. Log before and after in `flood-validation.md` | Thu 26 | F1 |
-| F3 | Time a one-month build first, then run the full batch 2015-01-01 → 2025-04-13 and put `flood_gfm.tif` on the Drive | Sat 28 | F1 |
+| F3 | Time a one-month build first, then run the full batch 2015-01-01 → 2025-04-13 and put `flood_gfm.tif` on the Drive. **Keep the flood grid** (`flood_common.grid()`, same AOI): the API needs `worldcover.tif` (G3, PR #20) on exactly that grid and answers 503 otherwise. If the grid has to change, rerun `pipeline/worldcover.py` (seconds) and put both files on the Drive together | Sat 28 | F1 |
 | F4 | **Done** (PR #14, 25 Nov): criterion pushed before the run, then `gfm_score.py 2025-04-20 2025-05-06` logged in `flood-validation.md`. **v4 fails too:** 15.81 % of land flagged in ≥1 pass against the 1 % limit (2024 on v3: 9.06 %). The cause is unknown: 98 % of the flags are outside the polder, on green land, so tilled fields don't explain them. The method isn't changed, and under 1b the history stops before v4 anyway. **Not checked yet:** what grew under 2024's flags outside the polder | Wed 25 | — |
 | F5 | **Done** (PR #14): the README credits JRC Global Surface Water v1.4 (Pekel et al., 2016) | Wed 25 | — |
-| F6 | With the new `flood_gfm.tif`: run `api/test_plots.py`, check `period_end` reads 2025-04-13, update the 20-plot flood numbers in the docs | Sun 29 | F3 |
+| F6 | With the new `flood_gfm.tif`: run `api/test_plots.py`, check `period_end` reads 2025-04-13, update the 20-plot flood numbers in the docs, the `crop` column included (`api/test_plots.py` now also needs `worldcover.tif` on the same grid) | Sun 29 | F3 |
 
 ## Ground: Alex, Miriam
 G3 is the hardest item and changes the contract. G4 isn't ground work, but this team has the capacity: G1 and G2 are merged (#11, #16), so G4 comes next.
@@ -62,6 +62,7 @@ Tuesday's decisions unblock Ground (L3, L4) and the scoring (L6), so they come f
 
 ## Risks
 - **The batch runtime (F3) is unknown.** Reading 8,543 scenes at 640 m was already long, and the build reads at 20 m. Fallback: keep 2024 only and move the extension to W4.
+- **The flood grid is now shared with `worldcover.tif`.** A rebuilt `flood_gfm.tif` on another grid (another AOI) makes `/evidence` answer 503 until `pipeline/worldcover.py` is rerun. Any flood rebuild, F3 or later, keeps the grid or ships both files together.
 - **The gate isn't recorded anywhere.** If no segment had 3 people describe a real decision it would change, keep land buyers and say so in the pitch.
 - **The cropland field changes the contract.** W3 can't finish until G3 merges, so agree the field name early (L4).
 - **Miriam is in two segments.** If Ground runs short, Alex takes G3's pipeline part (the WorldCover cut) and Miriam the API part.

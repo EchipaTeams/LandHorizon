@@ -162,6 +162,12 @@ def test_cropland_layer_off_the_flood_grid_is_503(layers, monkeypatch):
                        **{**GRID, "width": 5, "height": 5, "transform": from_origin(28.0, 45.41, 0.002, 0.002)}) as dst:
         dst.write(np.full((5, 5), main.CROPLAND, "uint8"), 1)
     assert client.post("/evidence", json=LEFT).status_code == 503
+    # Smaller than the flood grid (e.g. flood_gfm.tif rebuilt on a bigger AOI): a plot outside it is still the
+    # server's fault (503), not the user's (422).
+    with rasterio.open(layers / "worldcover.tif", "w", count=1, dtype="uint8", nodata=0,
+                       **{**GRID, "width": 5, "height": 5}) as dst:  # the left half only
+        dst.write(np.full((5, 5), main.CROPLAND, "uint8"), 1)
+    assert client.post("/evidence", json=RIGHT).status_code == 503
 
 
 def test_ground(layers, monkeypatch):
