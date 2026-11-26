@@ -18,6 +18,7 @@ The pipeline turns raw data into COGs **once, ahead of time**, for one pilot reg
 |---|---|---|---|---|
 | Flood (Sentinel-1; 2024 for now, ~10 years planned) | Copernicus GFM (CEMS Global Flood Monitoring), per-pass flood + exclusion layers from the EODC STAC catalogue, no account | Not downloaded: only the AOI window of each pass is read over HTTP | Locally, counted per pixel (`pipeline/flood_gfm.py`) | `flood_gfm.tif` |
 | Ground motion (EGMS Ortho) | EGMS Explorer, login, manual download | `data/raw/` | Locally, from the CSVs (csv + numpy + rasterio), rasterized once (`pipeline/ground.py`) | `ground.tif` |
+| Land cover (ESA WorldCover 2021 v200, CC BY 4.0) | Public COG on AWS (one 3°x3° tile, N45E027), no account | Not downloaded: only the AOI window is read over HTTP | Locally, warped onto the flood grid, nearest neighbour (`pipeline/worldcover.py`) | `worldcover.tif` (not read by the API yet: it is for `flood.cropland_share`, G3 / L4) |
 | Terrain (HAND) | ASF tiles (Copernicus 30 m DEM), public COGs | Not downloaded: only the AOI window is read over HTTP | Locally, rasterio merge + clip (`pipeline/hand.py`) | `hand.tif` |
 | Validation | Copernicus EMS outlines (EMSR758, EMSR293), PAZ | `data/raw/reference/` | Compared with the flood output (`pipeline/gfm_score.py`) | Precision and recall |
 
@@ -96,7 +97,7 @@ Rules:
 - Contract changes need the lead's review, because they break the frontend.
 
 ## Data and updates
-- `data/raw/` and `data/processed/` are gitignored. The COGs the API reads (`hand.tif`, `flood_gfm.tif`, `ground.tif`) are shared on the **team Drive**: copy them into `data/processed/`. The API answers 503 while one is missing, so this is the first step after cloning (README, *Run it*). It matters most for `ground.tif`: EGMS needs a login and can't be scripted.
+- `data/raw/` and `data/processed/` are gitignored. The COGs the API reads (`hand.tif`, `flood_gfm.tif`, `ground.tif`) are shared on the **team Drive**: copy them into `data/processed/`. The API answers 503 while one is missing, so this is the first step after cloning (README, *Run it*). It matters most for `ground.tif`: EGMS needs a login and can't be scripted. `worldcover.tif` (public data, seconds to build, ~2 MB, `pipeline/worldcover.py`) is not read by the API yet; it must be rebuilt whenever the flood grid changes.
 - `data/sample/` is committed (small files only): the 20 test plots. `api/test_main.py` builds its own tiny rasters, so `uv run pytest` passes on a clean clone; `api/test_plots.py` is skipped until the three COGs are in place.
 - The deployed server reads COGs from a Docker volume or bucket URL.
 - **For the demo the data is frozen**, so validation and pitch numbers stay fixed. The pipeline stays one re-runnable command with a date range.
@@ -137,7 +138,9 @@ LandHorizon/
 │   ├── s1_preprocess.xml        SNAP graph for flood_local.py (the same steps as Earth Engine's S1_GRD)
 │   ├── test_flood_local.py      tests for the local flood method
 │   ├── hand.py                  HAND for the AOI → data/processed/hand.tif
-│   └── ground.py                EGMS Ortho U CSVs → data/processed/ground.tif
+│   ├── ground.py                EGMS Ortho U CSVs → data/processed/ground.tif
+│   ├── worldcover.py            ESA WorldCover 2021 cut to the flood grid → data/processed/worldcover.tif
+│   └── test_worldcover.py       tests for the WorldCover cut
 ├── web/                         frontend decisions; the code is in EchipaTeams/demo-repository (React + TypeScript + Vite + Tailwind + MapLibre)
 │   └── README.md                frontend decisions, generated types and mock, how the website talks to the API
 ├── data/                        gitignored, except sample/
