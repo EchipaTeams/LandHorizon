@@ -106,6 +106,7 @@ def main():
     print(f"GFM {a.start}..{end}: {len(feats)} items", flush=True)
 
     transform, width, height = grid()
+    OUT.mkdir(parents=True, exist_ok=True)  # before the loop: the first checkpoint is saved at pass 10
     # "1a" keeps a checkpoint from before that decision (missing advisory layer = no warnings) from being resumed
     checkpoint = OUT / f"flood_gfm_1a_{a.start}_{end}.checkpoint.npz"
     n_flooded, n_passes, flood_bands, done, used = load_checkpoint(checkpoint, (height, width))
@@ -126,7 +127,6 @@ def main():
             save_checkpoint(checkpoint, n_flooded, n_passes, flood_bands, done, used)
 
     tmp = PATH.with_suffix(".part.tif")
-    OUT.mkdir(parents=True, exist_ok=True)
     with rasterio.open(tmp, "w", driver="GTiff", dtype="uint16", count=2 + len(flood_bands), crs=CRS,
                        transform=transform, width=width, height=height, compress="deflate", tiled=True,
                        interleave="band", BIGTIFF="IF_SAFER") as dst:  # pixel (the default) rewrites every band per band
