@@ -1,7 +1,7 @@
 """The 20 test plots of milestone 3 (data/sample/plots.geojson) against the real layers.
 
-Skipped unless data/processed/ holds hand.tif, ground.tif and a flood_gfm.tif that covers all of 2024
-(pipeline/hand.py, pipeline/ground.py, then pipeline/flood_gfm.py 2024-01-01 2025-01-01).
+Skipped unless data/processed/ holds hand.tif, ground.tif, worldcover.tif and a flood_gfm.tif that covers all of 2024
+(pipeline/hand.py, pipeline/ground.py, pipeline/worldcover.py, then pipeline/flood_gfm.py 2024-01-01 2025-01-01).
 
   uv run pytest api/test_plots.py
   uv run python api/test_plots.py      # the results table, for the data test
@@ -31,14 +31,15 @@ client = TestClient(main.app)
 
 
 def layers_ready():
-    if not (main.HAND_PATH.exists() and main.FLOOD_PATH.exists() and main.GROUND_PATH.exists()):
+    if not (main.HAND_PATH.exists() and main.FLOOD_PATH.exists() and main.GROUND_PATH.exists()
+                and main.WORLDCOVER_PATH.exists()):
         return False
     with rasterio.open(main.FLOOD_PATH) as src:
         tags = src.tags()
     return tags.get("period_start", "9") <= "2024-01-01" and tags.get("period_end", "0") >= "2025-01-01"
 
 
-pytestmark = pytest.mark.skipif(not layers_ready(), reason="needs hand.tif, ground.tif and a flood_gfm.tif covering 2024")
+pytestmark = pytest.mark.skipif(not layers_ready(), reason="needs hand.tif, ground.tif, worldcover.tif and a flood_gfm.tif covering 2024")
 
 
 def evidence(plot):
@@ -65,6 +66,8 @@ def test_unknown_rule(plot):
         assert (flood["status"], flood["flooded_fraction"], flood["flood_dates"]) == ("unknown", None, [])
     else:
         assert flood["status"] == "measured" and flood["flooded_fraction"] is not None and flood["n_passes"] > 0
+    assert len(flood["cropland_share"]) == len(flood["flood_dates"])  # one share per flood date
+    assert all(s is None or 0 <= s <= 1 for s in flood["cropland_share"])
     assert (terrain["status"] == "unknown") == (terrain["hand_m"] is None)
     assert (ground["status"] == "unknown") == (ground["velocity_mm_yr"] is None)
     assert ground["status"] == "unknown" or ground["n_cells"] > 0  # unknown may still have cells, below GROUND_MIN_SHARE
@@ -96,7 +99,7 @@ def test_no_flood_date_in_the_spring_no_flood_window(plot):
 def table():
     """One line per plot: what the API answers. Run this file as a script to print it."""
     print(f"{'plot':20s} {'ha':>5s}  {'expect':18s} {'flood':8s} {'seen':>5s} {'passes':>6s} {'flooded':>7s} "
-          f"{'HAND m':>6s} {'cells':>5s} {'mm/yr':>5s}  flood dates")
+          f"{'HAND m':>6s} {'cells':>5s} {'mm/yr':>5s}  flood dates (cropland share)")
     for p in PLOTS:
         props, e = p["properties"], evidence(p)
         f, t, g = e["flood"], e["terrain"], e["ground"]
@@ -106,8 +109,9 @@ def table():
         print(f"{props['name']:20s} {props['area_ha']:5.1f}  {props['expect']:18s} {f['status']:8s} "
               f"{f['observed_fraction']:5.0%} {f['n_passes']:6d} {flooded:>7s} {hand:>6s} {g['n_cells']:5d} "
               f"{motion:>5s}  "
-              f"{', '.join(d[5:] for d in f['flood_dates'])}")
+              + ", ".join(f"{d[5:]} ({'-' if s is None else f'{s:.0%}'})"
+                          for d, s in zip(f["flood_dates"], f["cropland_share"])))
 
 
 if __name__ == "__main__":
-    table() if layers_ready() else print("needs hand.tif, ground.tif and a flood_gfm.tif covering 2024; see the docstring")
+    table() if layers_ready() else print("needs hand.tif, ground.tif, worldcover.tif and a flood_gfm.tif covering 2024; see the docstring")
