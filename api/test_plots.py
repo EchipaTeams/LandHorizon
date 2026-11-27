@@ -110,7 +110,7 @@ def table():
         print(f"{props['name']:20s} {props['area_ha']:5.1f}  {props['expect']:18s} {f['status']:8s} "
               f"{f['observed_fraction']:5.0%} {f['n_passes']:6d} {flooded:>7s} {hand:>6s} {g['n_cells']:5d} "
               f"{motion:>5s}  "
-              + ", ".join(f"{d[5:]} ({'-' if s is None else f'{s:.0%}'})"
+              + ", ".join(f"{d} ({'-' if s is None else f'{s:.0%}'})"
                           for d, s in zip(f["flood_dates"], f["cropland_share"])))
 
 

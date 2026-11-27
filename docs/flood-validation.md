@@ -366,7 +366,7 @@ The 88 real flood bands of the 2024 file were repeated to 1,200 bands and writte
 |---|---|
 | Scenes | **8,543** (2015-01-01 – 2025-04-13; the history stopped on the version change, 2025-04-14) |
 | Passes | **3,619**; 3,615 listed in `gfm_versions` (in 4 passes no scene counted) |
-| Scenes dropped by 1a (no advisory layer) | **219** unique, as expected: 6 / 11 / 14 / 54 / 68 / 42 / 24 in 2015 – 2021, none in 2022 – 2025. The log has 220 lines: the restart re-read one pass done after the last checkpoint |
+| Scenes dropped by 1a (no advisory layer) | **219** unique, as expected: 6 / 11 / 14 / 54 / 68 / 42 / 24 in 2015 – 2021, none in 2022 – 2025. The log has 220 such lines: the restart re-read the 5 passes done after the last checkpoint, one of them with a dropped scene |
 | Read failures, retries, moved files | 0 |
 | Bands | **948**: n_flooded, n_passes and **946** passes with flood (2015: 47, 2016: 77, 2017: 130, 2018: 132, 2019: 121, 2020: 98, 2021: 98, 2022: 71, 2023: 59, 2024: 88, 2025: 25) |
 | File | **81.4 MB**, COG, band interleave, no overviews |
