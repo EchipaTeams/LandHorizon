@@ -1,7 +1,8 @@
 """The 20 test plots of milestone 3 (data/sample/plots.geojson) against the real layers.
 
 Skipped unless data/processed/ holds hand.tif, ground.tif, worldcover.tif and a flood_gfm.tif that covers all of 2024
-(pipeline/hand.py, pipeline/ground.py, pipeline/worldcover.py, then pipeline/flood_gfm.py 2024-01-01 2025-01-01).
+(pipeline/hand.py, pipeline/ground.py, pipeline/worldcover.py, then pipeline/flood_gfm.py 2015-01-01 2025-05-01,
+the 2015 – 13 Apr 2025 history; a 2024-only build works too).
 
   uv run pytest api/test_plots.py
   uv run python api/test_plots.py      # the results table, for the data test
