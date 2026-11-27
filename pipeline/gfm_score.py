@@ -26,7 +26,8 @@ import time
 import urllib.parse
 import urllib.request
 import zipfile
-from collections import defaultdict
+from collections import defaultdict, deque
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 
 import numpy as np
@@ -125,7 +126,7 @@ def read_asset(item, key):
         return read(fresh["assets"][key]["href"])
 
 
-def passes(feats, verbose=False, skip=()):
+def passes(feats, verbose=False, skip=(), workers=1):
     """Per Sentinel-1 pass, in time order: (pass key 'YYYY-MM-DDTHH', seen, flooded, used) on the AOI grid.
 
     Frames of one pass (same date and hour) are merged. seen = GFM had data and didn't exclude the
@@ -133,43 +134,63 @@ def passes(feats, verbose=False, skip=()):
     and so is a whole scene with no advisory layer: it may have had warnings (decision 1a).
     used = the pass's scenes that counted, i.e. all but those without an advisory layer.
     Passes whose key is in `skip` (already done, e.g. from a checkpoint) aren't read again.
+    workers > 1 reads that many passes at once (the time is HTTP waits and warping, which free the GIL);
+    the output and its order don't change.
     """
     groups = defaultdict(list)
     for f in feats:
         groups[f["properties"]["datetime"][:13]].append(f)
-    for key, frames in sorted(groups.items()):
-        if key in skip:
-            continue
-        flood = excluded = advisory = None
-        used = []
-        for f in frames:
-            try:
-                v = read_asset(f, "advisory_flags")
-            except (rasterio.errors.RasterioError, CPLE_BaseError, OSError, KeyError) as err:
-                if not isinstance(err, KeyError) and not missing_file(err):
-                    raise
-                print(f"  {f['id']}: no advisory layer, scene not seen", flush=True)
-                continue  # its neighbours in the pass still count, under their own flags
-            used.append(f)
-            a = read_asset(f, "ensemble_flood_extent")
-            e = read_asset(f, "exclusion_mask")
-            if verbose:  # the documented encoding is 0/1 + no data; show what the files really hold
-                print(f"  {f['id']}: flood values {np.unique(a[np.isfinite(a)]).tolist()[:6]}, "
-                      f"exclusion values {np.unique(e[np.isfinite(e)]).tolist()[:6]}", flush=True)
-            flood = a if flood is None else np.where(np.isin(flood, (0, 1)), flood, a)
-            excluded = e if excluded is None else np.where(np.isfinite(excluded), excluded, e)
-            advisory = v if advisory is None else np.where(np.isfinite(advisory), advisory, v)
-        if flood is None:  # no scene of the pass has an advisory layer
-            _, width, height = flood_common.grid()
-            flood = excluded = advisory = np.full((height, width), np.nan, "float32")
-        # Advisory flags (1 low regional backscatter: dry soil, frost, snow; 2 wind-roughened water; 3 both)
-        # mark where GFM itself says its result is unreliable. Treat them as not seen for this pass:
-        # on 30 Apr 2024 they covered 40 % of a false "flood" on tilled fields, but 0.7 % of the real Sept flood.
-        seen = np.isin(flood, (0, 1)) & (excluded != 1) & ~np.isin(advisory, (1, 2, 3))
-        flooded = seen & (flood == 1)
-        print(f"pass {key}h: {len(used)} of {len(frames)} frame(s) used, sees {seen.mean():.0%} of the AOI, "
-              f"flood in {flooded.sum() / max(seen.sum(), 1):.2%} of it", flush=True)
-        yield key, seen, flooded, used
+    with ThreadPoolExecutor(workers) as pool:
+        ahead = deque()  # bounded, so finished passes don't pile up in memory behind a slow one
+        for key, frames in sorted(groups.items()):
+            if key not in skip:
+                ahead.append(pool.submit(read_pass, key, frames, verbose))
+            while ahead and (len(ahead) > 2 * workers or ahead[0].done()):
+                yield show(ahead.popleft().result())
+        while ahead:
+            yield show(ahead.popleft().result())
+
+
+def show(result):
+    """Print a pass's log lines in pass order, then hand on (key, seen, flooded, used)."""
+    *out, log = result
+    print("\n".join(log), flush=True)
+    return tuple(out)
+
+
+def read_pass(key, frames, verbose):
+    """One pass: (key, seen, flooded, used, log lines); see passes()."""
+    log = []
+    flood = excluded = advisory = None
+    used = []
+    for f in frames:
+        try:
+            v = read_asset(f, "advisory_flags")
+        except (rasterio.errors.RasterioError, CPLE_BaseError, OSError, KeyError) as err:
+            if not isinstance(err, KeyError) and not missing_file(err):
+                raise
+            log.append(f"  {f['id']}: no advisory layer, scene not seen")
+            continue  # its neighbours in the pass still count, under their own flags
+        used.append(f)
+        a = read_asset(f, "ensemble_flood_extent")
+        e = read_asset(f, "exclusion_mask")
+        if verbose:  # the documented encoding is 0/1 + no data; show what the files really hold
+            log.append(f"  {f['id']}: flood values {np.unique(a[np.isfinite(a)]).tolist()[:6]}, "
+                       f"exclusion values {np.unique(e[np.isfinite(e)]).tolist()[:6]}")
+        flood = a if flood is None else np.where(np.isin(flood, (0, 1)), flood, a)
+        excluded = e if excluded is None else np.where(np.isfinite(excluded), excluded, e)
+        advisory = v if advisory is None else np.where(np.isfinite(advisory), advisory, v)
+    if flood is None:  # no scene of the pass has an advisory layer
+        _, width, height = flood_common.grid()
+        flood = excluded = advisory = np.full((height, width), np.nan, "float32")
+    # Advisory flags (1 low regional backscatter: dry soil, frost, snow; 2 wind-roughened water; 3 both)
+    # mark where GFM itself says its result is unreliable. Treat them as not seen for this pass:
+    # on 30 Apr 2024 they covered 40 % of a false "flood" on tilled fields, but 0.7 % of the real Sept flood.
+    seen = np.isin(flood, (0, 1)) & (excluded != 1) & ~np.isin(advisory, (1, 2, 3))
+    flooded = seen & (flood == 1)
+    log.append(f"pass {key}h: {len(used)} of {len(frames)} frame(s) used, sees {seen.mean():.0%} of the AOI, "
+               f"flood in {flooded.sum() / max(seen.sum(), 1):.2%} of it")
+    return key, seen, flooded, used, log
 
 
 def counts(feats, verbose=True, save_dir=None):

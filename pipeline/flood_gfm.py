@@ -34,6 +34,7 @@ from flood_common import CRS, OUT, grid
 from gfm_score import items, passes
 
 PATH = OUT / "flood_gfm.tif"
+WORKERS = 8  # passes read at once: June 2019 took 36 s instead of 189 s, identical file, 7.6 GB peak memory
 
 
 def major(feat):
@@ -116,7 +117,7 @@ def main():
         print("  this checkpoint doesn't record dropped scenes: gfm_versions lists all scenes of its passes",
               flush=True)
         used = {f["id"] for f in feats if f["properties"]["datetime"][:13] in done}
-    for key, seen, flooded, frames in passes(feats, skip=done):
+    for key, seen, flooded, frames in passes(feats, skip=done, workers=WORKERS):
         n_passes += seen
         n_flooded += flooded
         if flooded.any():

@@ -19,7 +19,7 @@ def scene(time, version="GFM v3.1.0", members="DLR LIST TUW"):
     return {"id": time, "properties": {"datetime": time, "processing:version": version, "flood_members": on}}
 
 
-def run(monkeypatch, layers):
+def run(monkeypatch, layers, workers=1):
     """gfm_score.passes() over fake scenes: {time: (flood, exclusion, advisory)}; advisory may be an exception."""
     def read_asset(item, key):
         layer = layers[item["id"]][("ensemble_flood_extent", "exclusion_mask", "advisory_flags").index(key)]
@@ -28,10 +28,20 @@ def run(monkeypatch, layers):
         return layer
     monkeypatch.setattr(gfm_score, "read_asset", read_asset)
     monkeypatch.setattr(flood_common, "grid", lambda: (None, 4, 1))
-    return list(gfm_score.passes([scene(t) for t in layers]))
+    return list(gfm_score.passes([scene(t) for t in layers], workers=workers))
 
 
 MISSING = RasterioIOError("HTTP response code: 404")
+
+
+def test_workers_change_nothing(monkeypatch):
+    """Reading passes in parallel gives the same passes, in time order, as reading them one by one."""
+    layers = {f"2019-06-{d:02}T04:00:00Z": (px(d % 2, 1, NAN, 0), px(0, 0, 0, d % 3), MISSING if d % 5 == 0 else px(0, 0, 0, 0))
+              for d in range(1, 30)}
+    one, many = run(monkeypatch, layers), run(monkeypatch, layers, workers=4)
+    assert [p[0] for p in many] == sorted(p[0] for p in many)
+    for (k1, s1, f1, u1), (k2, s2, f2, u2) in zip(one, many, strict=True):
+        assert k1 == k2 and (s1 == s2).all() and (f1 == f2).all() and u1 == u2
 
 
 @pytest.mark.parametrize("missing", [MISSING, KeyError("advisory_flags")])
