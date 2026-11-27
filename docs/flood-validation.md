@@ -381,9 +381,9 @@ The 88 real flood bands of the 2024 file were repeated to 1,200 bands and writte
 `api/test_plots.py` on the F3 file (2015-01-01 – 2025-04-13, 946 flood bands) against the 2024 file it replaces (`flood_gfm_2024_10-11-2026.tif` on the Drive, 88 flood bands). Same `hand.tif`, `ground.tif`, `worldcover.tif`. The method wasn't changed. The 2024 table: `FLOOD_PATH=data/processed/flood_gfm_2024_10-11-2026.tif uv run python api/test_plots.py`.
 
 - **`period_start` / `period_end`** in the answer: **2015-01-01 / 2025-04-13**, as expected.
-- **`uv run pytest`:** 2024 file 70 passed, 4 xfailed; **10-year file 68 passed, 3 failed, 4 xfailed**.
+- **`uv run pytest`:** 2024 file 70 passed, 4 xfailed; **10-year file 68 passed, 3 failed, 4 xfailed**; with the 3 marked as expected failures (PR #23), 68 passed, 7 xfailed.
   - **The 4 xfails** (spring false alarm, `xfail(strict=True)`) still fail, as expected: no unexpected pass.
-  - **The 3 failures are new and known, left failing on purpose** (Sover, 27 Nov): `test_dry_plot_has_no_flood_date` on `floodplain-dry-1/2/3`. See *The dry plots* below.
+  - **The 3 failures are new and known**, now expected failures on a file that starts before 2024 (`xfail(strict=True)`, lead, 27 Nov; on the 2024 file the test still has to pass): `test_dry_plot_has_no_flood_date` on `floodplain-dry-1/2/3`. See *The dry plots* below.
 
 | Plot | Expect | 2024 file: passes, flooded, flood dates (cropland share) | 10-year file: passes, flooded, flood dates added (cropland share) |
 |---|---|---|---|
@@ -423,7 +423,7 @@ The 88 real flood bands of the 2024 file were repeated to 1,200 bands and writte
 
   Several dates flag thousands of hectares (2021-03-30: 7,624 ha), which could be spring high water as much as tilled soil. River levels and EMS activations for these dates weren't checked.
 - **What would settle it:** a clear Sentinel-2 image near each date, as for 30 Apr 2024 (bare fields, no water). Not run. Sentinel-2 is suggested as part of the fix for the spring false alarm in general: what it could and couldn't do, and its cost, in [architecture.md](architecture.md), *Open decisions → False flood dates outside real floods*.
-- **For whoever picks this up:** `uv run pytest` with the 10-year file gives 3 failures in `test_dry_plot_has_no_flood_date`; they are this, not a regression. If they're confirmed false alarms, they belong with the spring false alarm (`test_no_flood_date_in_the_spring_no_flood_window`, xfail strict). If they're real floods, `plots.geojson` mislabels the plots.
+- **For whoever picks this up:** `uv run pytest` with the 10-year file gives 3 xfails in `test_dry_plot_has_no_flood_date`; they are this, not a regression. When the dates go away the test passes, and strict turns that into a failure: remove the mark. If they're confirmed false alarms, they belong with the spring false alarm (`test_no_flood_date_in_the_spring_no_flood_window`, xfail strict). If they're real floods, `plots.geojson` mislabels the plots.
 
 ### API time on the real file
 `checks/api_timing/api_timing.py`, `POST /evidence` on the 20 plots, in-process, warm, on the F3 machine (Ryzen 7 7700), idle:

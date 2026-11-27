@@ -34,7 +34,7 @@ from flood_common import CRS, OUT, grid
 from gfm_score import items, passes
 
 PATH = OUT / "flood_gfm.tif"
-WORKERS = 8  # passes read at once: June 2019 took 36 s instead of 189 s, identical file, 7.6 GB peak memory
+WORKERS = 8  # passes read at once: June 2019 took 36 s instead of 189 s, identical file, 7.6 GB peak memory; lower it on a smaller machine
 
 
 def major(feat):

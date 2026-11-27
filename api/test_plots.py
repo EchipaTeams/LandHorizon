@@ -9,8 +9,8 @@ the 2015 – 13 Apr 2025 history; a 2024-only build works too).
 
 Each plot's `expect` says what the answer should be:
   flood_sept_2024     measured, with a flood date inside 12-25 Sept 2024 (storm Boris)
-  never_flooded       measured, no flood date. Checked on 2024 only: on the 2015 - 2025 file floodplain-dry-1/2/3 get
-                      Jan-May dates (2020-2023) and fail. Known, left failing on purpose until the Sentinel-2
+  never_flooded       measured, no flood date. Holds on the 2024 file. On the 2015 - 2025 file floodplain-dry-1/2/3
+                      get Jan-May dates (2020-2023), so there it's an expected failure (strict) until the Sentinel-2
                       decision: false alarm or real flood isn't known (docs/flood-validation.md, F6).
   unknown             GFM can't see it, so "unknown", never "not flooded"
   spring_false_alarm  known problem: GFM flags tilled fields on 30 Apr / 1 May 2024 (docs/flood-validation.md).
@@ -33,13 +33,20 @@ SPRING = (date(2024, 4, 20), date(2024, 5, 5))    # the spring no-flood window t
 client = TestClient(main.app)
 
 
-def layers_ready():
-    if not (main.HAND_PATH.exists() and main.FLOOD_PATH.exists() and main.GROUND_PATH.exists()
-                and main.WORLDCOVER_PATH.exists()):
-        return False
+def flood_tags():
+    if not main.FLOOD_PATH.exists():
+        return {}
     with rasterio.open(main.FLOOD_PATH) as src:
-        tags = src.tags()
-    return tags.get("period_start", "9") <= "2024-01-01" and tags.get("period_end", "0") >= "2025-01-01"
+        return src.tags()
+
+
+def layers_ready():
+    tags = flood_tags()
+    return (main.HAND_PATH.exists() and main.GROUND_PATH.exists() and main.WORLDCOVER_PATH.exists()
+            and tags.get("period_start", "9") <= "2024-01-01" and tags.get("period_end", "0") >= "2025-01-01")
+
+
+STARTS_BEFORE_2024 = flood_tags().get("period_start", "9") < "2024-01-01"  # the 2015 - 2025 file, not the 2024 one
 
 
 pytestmark = pytest.mark.skipif(not layers_ready(), reason="needs hand.tif, ground.tif, worldcover.tif and a flood_gfm.tif covering 2024")
@@ -82,6 +89,8 @@ def test_sept_2024_flood_is_found(plot):
     assert flood["status"] == "measured" and dates_in(flood, EVENT)
 
 
+@pytest.mark.xfail(STARTS_BEFORE_2024, strict=True,
+                   reason="Jan-May 2020-2023 dates on floodplain-dry-1/2/3: false alarm or real flood unknown (F6)")
 @pytest.mark.parametrize("plot", by_name("never_flooded"))
 def test_dry_plot_has_no_flood_date(plot):
     flood = evidence(plot)["flood"]

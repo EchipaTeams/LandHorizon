@@ -19,7 +19,7 @@ Needs Python 3.14 and [uv](https://docs.astral.sh/uv/).
 The API reads four COGs from `data/processed/` and answers 503 while one is missing. The quickest way to get them is to copy `hand.tif`, `flood_gfm.tif`, `ground.tif` and `worldcover.tif` from the team Drive into `data/processed/` (ask the team for access). Or build them yourself:
 ```
 uv run python pipeline/hand.py      # data/processed/hand.tif (~20 MB, public data)
-uv run python pipeline/flood_gfm.py 2015-01-01 2025-05-01   # data/processed/flood_gfm.tif, 2015 – 13 Apr 2025 (public data, no account, ~1¼ h with 8 parallel reads)
+uv run python pipeline/flood_gfm.py 2015-01-01 2025-05-01   # data/processed/flood_gfm.tif, 2015 – 13 Apr 2025 (public data, no account, ~1¼ h with 8 parallel reads, ~8 GB of memory: lower `WORKERS` in the script on a smaller machine)
 uv run python pipeline/ground.py    # data/processed/ground.tif; needs the EGMS tiles in data/raw/egms/ (login, see the script)
 uv run python pipeline/worldcover.py   # data/processed/worldcover.tif (~2 MB, public data, seconds); on the grid of flood_gfm.tif
 ```

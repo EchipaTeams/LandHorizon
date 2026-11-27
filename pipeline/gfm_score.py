@@ -140,7 +140,8 @@ def passes(feats, verbose=False, skip=(), workers=1):
     groups = defaultdict(list)
     for f in feats:
         groups[f["properties"]["datetime"][:13]].append(f)
-    with ThreadPoolExecutor(workers) as pool:
+    pool = ThreadPoolExecutor(workers)
+    try:
         ahead = deque()  # bounded, so finished passes don't pile up in memory behind a slow one
         for key, frames in sorted(groups.items()):
             if key not in skip:
@@ -149,6 +150,8 @@ def passes(feats, verbose=False, skip=(), workers=1):
                 yield show(ahead.popleft().result())
         while ahead:
             yield show(ahead.popleft().result())
+    finally:  # Ctrl-C or a read error: don't start the queued passes (each can retry for ~8 min)
+        pool.shutdown(cancel_futures=True)
 
 
 def show(result):
