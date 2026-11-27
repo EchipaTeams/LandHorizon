@@ -1,13 +1,13 @@
 # Week 3 plan: Mon 23 – Sun 29 Nov
 
-By Sunday 29 Nov (milestone 5): the flood history runs 2015 to 13 Apr 2025 under research decisions 1a and 1b, the cropland field is in the contract, the gate is written down, and the API runs at a public URL.
+By Sunday 29 Nov (milestone 5): the flood history runs 2015 to 13 Apr 2025 under research decisions 1a and 1b, the cropland field is in the contract, the gate is written down. The public URL moved to week 4 (G4, 27 Nov).
 
 The work is split into segments. Each team splits its own list; whoever writes a PR, a teammate reviews it.
 
 | Segment | Team | Done by Sunday when |
 |---|---|---|
 | Flood | Szilly, Sover | 1a and 1b are in the pipeline, every test is re-scored, and the 2015 – 13 Apr 2025 `flood_gfm.tif` is on the Drive |
-| Ground | Alex, Miriam | Ground uses a share rule, `POST /evidence` returns the cropland share, and the API runs at a public URL |
+| Ground | Alex, Miriam | Ground uses a share rule, `POST /evidence` returns the cropland share; the public URL moved to week 4 (G4) |
 | Business and law | Miriam | The interview summary is with Matei, the law wording is confirmed, and the BMC, SWOT and PESTEL are drafted |
 | Website | Misu, Sara | The website shows the farmland caveat and runs at a public URL |
 | Lead and API | Matei | The gate is written down, Tuesday's decisions are made, and `overall` follows the agreed format |
@@ -32,7 +32,7 @@ G3 is the hardest item and changes the contract. G4 isn't ground work, but this 
 | G1 | **Done** (PR #11, merged 25 Nov): ground share rule (cells with data ÷ cells whose centre fits in the plot, `GROUND_MIN_SHARE` 0.5), test and `architecture.md`; `api/test_plots.py` asserts unknown ⇔ no velocity and measured ⇒ `n_cells` > 0. L3 kept this denominator and accepted 0.5 (25 Nov) | Fri 27 | — |
 | G2 | **Done** (PR #11, PR #16 25 Nov): checked on the real `ground.tif` that `edge-50` (1 of 2 cells) and `edge-65` (4 of 8) stay measured and the other 18 stay unknown. #16: `ground.py --plots` prints the cells that fit and the share with data, and the data-test table (`architecture.md`, "Cells per plot") says so | Fri 27 | — |
 | G3 | Cropland share field `flood.cropland_share: float \| None` (agreed in L4): cut WorldCover 2021 to the flood grid (reuse `checks/cropland_share/cropland_share.py`), compute the cropland share of the plot's flagged pixels in the API. `null` when nothing is flagged, flood is unknown or WorldCover has no data. Tests, `architecture.md`, PR marked as a contract change. **Built in PR #20** (26 Nov); in the review the lead changed the type to `list[float \| None]`, one share per flood date | Sat 28 | L4 |
-| G4 | Deploy the API: Dockerfile and `docker-compose.yml` (COGs from a volume), a public URL, and a reverse proxy so the website and `/evidence` share one domain ([evidence-request.md](evidence-request.md#deployment-not-decided-yet)). Move docker-compose from W4 to now in `architecture.md` | Fri 27 | — |
+| G4 | Deploy the API: Dockerfile and `docker-compose.yml` (COGs from a volume), a public URL, and a reverse proxy so the website and `/evidence` share one domain ([evidence-request.md](evidence-request.md#deployment-not-decided-yet)). **Moved to week 4** (27 Nov, [plan-week4.md](plan-week4.md)): it waits for the full batch (F3), so it's built on the file it will serve | Wed 2 Dec | F3 |
 
 
 
