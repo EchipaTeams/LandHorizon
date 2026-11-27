@@ -6,7 +6,7 @@ shadow) and where its result is unreliable that pass (advisory flags: dry or til
 snow, wind on water). Both count as "not seen". Validated against Copernicus EMS on two events:
 docs/flood-validation.md.
 
-  uv run python pipeline/flood_gfm.py 2015-01-01 2025-05-01   # stops on 2025-04-14 (v3 -> v4), ~6 h
+  uv run python pipeline/flood_gfm.py 2015-01-01 2025-05-01   # stops on 2025-04-14 (v3 -> v4), ~1¼ h
 
 Writes data/processed/flood_gfm.tif on the AOI grid (UTM 35N, 10 m):
   band 1  n_flooded   passes that saw flood water on the pixel
