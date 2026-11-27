@@ -357,3 +357,22 @@ The 88 real flood bands of the 2024 file were repeated to 1,200 bands and writte
   `setsid nohup bash -c 'uv run python -u pipeline/flood_gfm.py 2015-01-01 2025-05-01 2>&1 | gawk "{print strftime(\"%F %T\"), \$0; fflush()}" >> data/processed/flood_gfm_2015-2025.log' < /dev/null > /dev/null 2>&1 &`
   The whole pipe must be inside `setsid`, or the log writer dies with the terminal and takes the build with it. If the build dies, the same command resumes from `data/processed/flood_gfm_1a_2015-01-01_2025-04-14.checkpoint.npz`.
 - **Expected:** 5–5½ h of reading, then ~10 min of writing; 950–1,200 bands; `period_end` tag 2025-04-14 (the API reports 2025-04-13).
+- **Second start, 27 Nov 2026, on another machine (Ryzen 7 7700, 8 cores / 16 threads, 30 GB): done.**
+  - **Serial, 16:58 – 17:14:48:** 160 passes (Jan – 14 Dec 2015) in 13.7 min of reading, after ~3 min of catalogue query. At that pace the 3,619 passes would have taken about 5.2 h, as expected. The machine was at half of one core: the build waited on HTTP and warped one scene at a time.
+  - **Parallel, from 17:14:48** (commit `dd2f3da`): `gfm_score.passes()` now reads 8 passes at once (`WORKERS` in `flood_gfm.py`); the output and its order don't change. Checked first on June 2019: 8 workers and 1 worker gave the same file (13 bands, same band names, tags and pixels) and the same log, 36 s against 189 s, 7.6 GB peak memory. Stopped the serial run, same command again: it resumed from the checkpoint at 160 passes.
+  - **Times:** catalogue query 17:14:48 – 17:17:06; reading 17:17:06 – 18:08:04 (**51 min** for 3,459 passes); final write 18:08:04 – 18:11:00 (**2 min 56 s**). From the first start to the file: 1 h 13 min.
+
+| Measured | |
+|---|---|
+| Scenes | **8,543** (2015-01-01 – 2025-04-13; the history stopped on the version change, 2025-04-14) |
+| Passes | **3,619**; 3,615 listed in `gfm_versions` (in 4 passes no scene counted) |
+| Scenes dropped by 1a (no advisory layer) | **219** unique, as expected: 6 / 11 / 14 / 54 / 68 / 42 / 24 in 2015 – 2021, none in 2022 – 2025. The log has 220 lines: the restart re-read one pass done after the last checkpoint |
+| Read failures, retries, moved files | 0 |
+| Bands | **948**: n_flooded, n_passes and **946** passes with flood (2015: 47, 2016: 77, 2017: 130, 2018: 132, 2019: 121, 2020: 98, 2021: 98, 2022: 71, 2023: 59, 2024: 88, 2025: 25) |
+| File | **81.4 MB**, COG, band interleave, no overviews |
+| Tags | `period_start` 2015-01-01, `period_end` 2025-04-14 (exclusive; the API says 2025-04-13); `gfm_versions`: all 3,615 passes `GFM v3.1.0` |
+| Grid | EPSG:32635, 5910 × 5620, origin (538820, 5078150), 10 m: **identical** to `worldcover.tif` (crs, transform, width, height) |
+| AOI seen by ≥1 pass | **59 %** (2024 file: 58.7 %) |
+| Ever flooded, share of the seen area | **44.27 %** (2024 file: 13.34 %); in ≥2 passes 28.71 % (2024: 5.06 %) |
+
+- **Ever flooded tripled.** The 44 % sums every single-pass flag over 10 years, real floods and false alarms alike; it isn't a flood map. Which of it is real isn't checked here. On the 20 test plots the new dates are all in January – May (F6 below).
