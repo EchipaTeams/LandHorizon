@@ -9,7 +9,9 @@ the 2015 – 13 Apr 2025 history; a 2024-only build works too).
 
 Each plot's `expect` says what the answer should be:
   flood_sept_2024     measured, with a flood date inside 12-25 Sept 2024 (storm Boris)
-  never_flooded       measured, no flood date
+  never_flooded       measured, no flood date. Checked on 2024 only: on the 2015 - 2025 file floodplain-dry-1/2/3 get
+                      Jan-May dates (2020-2023) and fail. Known, left failing on purpose until the Sentinel-2
+                      decision: false alarm or real flood isn't known (docs/flood-validation.md, F6).
   unknown             GFM can't see it, so "unknown", never "not flooded"
   spring_false_alarm  known problem: GFM flags tilled fields on 30 Apr / 1 May 2024 (docs/flood-validation.md).
                       Marked as an expected failure; it starts passing when the false alarm is fixed.
