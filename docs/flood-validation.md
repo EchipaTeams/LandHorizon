@@ -139,6 +139,8 @@ GFM was **not tuned** on any of this data, so unlike v0.2, these are out-of-samp
 | 2 July (PRODUCT) | 314 ha | 98 % | **96.7 %** | 67.6 % | **66.0 %** |
 | 3 July (MONIT01) | 373 ha | 97 % | **99.3 %** | 58.5 % | **56.9 %** |
 
+*Re-scored under decision 1a on 26 Nov 2026 (the 2 July 16:00 pass drops out): see* Re-score under decision 1a *at the end.*
+
 - **75 % of this area is excluded** (hilly plateau), yet 97–98 % of the flood lies in the part GFM sees.
 - **Precision is far higher than at Galați.** A slow river flood stays in place and is seen by many passes. Why Galați's precision is only 27 % is **an untested hypothesis**: possibly storm-soaked fields around a short flash flood, or EMS mapping only part of the water. Neither has been checked.
 
@@ -163,7 +165,7 @@ Building the 2024 history (`flood_gfm.py`) showed 17 % of the seen AOI flagged a
 - **Fix:** pixels under an advisory flag now count as **not seen** for that pass, as GFM's manual advises ("use with caution").
 - **Effect on validation:**
   - dry window 0.09 %, Galați recall 58.0 % / precision 27.1 %, Botoșani 96.7 % / 67.6 % (2 July) and 99.3 % / 58.5 % (3 July)
-  - the advisory layer is missing for 2 of the 31 passes from 2018; those counted as having no warnings when these numbers were made (not seen since decision 1a, 25 Nov 2026)
+  - the advisory layer is missing for 2 of the 31 passes from 2018; those counted as having no warnings when these numbers were made (not seen since decision 1a, 25 Nov 2026; re-scored in *Re-score under decision 1a* below)
 - **What's left:** most of the false alarm carried no advisory flag, so it remains. Removing it would need an optical cross-check (e.g. Sentinel-2 NDWI), which isn't built.
 - **2024 history after the fix:**
 
@@ -270,4 +272,165 @@ The fix above treats pixels under a GFM advisory flag as not seen. The lead aske
 - **A 10-year build would hit this in roughly 1 in 20–50 older passes.**
 - **Treating them as "no warnings"** lets any false alarms in them through.
 - **Treating them as "not seen"** is safer, but also drops real observations. At Botoșani it would remove a real flood scene and lower the recall.
-- **Decided by the lead (1a, 17 Nov 2026): not seen,** per scene. In `gfm_score.passes()` since 25 Nov 2026. The scores above are from before; the re-score is still to be done.
+- **Decided by the lead (1a, 17 Nov 2026): not seen,** per scene. In `gfm_score.passes()` since 25 Nov 2026. The scores above are from before; the re-score follows.
+
+## Re-score under decision 1a, 26 Nov 2026 (F2)
+Every flood test re-run with `gfm_score.py` on main after PR #15, with the **same arguments as the first runs** (the end date is exclusive). The method wasn't changed.
+
+**Prediction, written before the runs:** no 2023 or 2024 scene lacks its advisory layer, so every Galați number stays the same, and a change would be a bug, not a result. Botoșani changes, because the 2 July 16:00 scene drops out.
+
+**Galați and the dry windows: unchanged, as predicted.** No scene was dropped in any of these runs.
+
+| Test | Arguments | Before | Under 1a | Criterion |
+|---|---|---|---|---|
+| Dry window, Sept 2023, land flagged ≥1 / ≥2 / ≥3 passes | `2023-09-12 2023-09-25` | 0.09 % | 0.09 / 0.01 / 0.00 % | ≤ 1 % |
+| Sept 2024 vs EMSR758 PRODUCT, recall ≥1 | `2024-09-12 2024-09-25 --reference …PRODUCT_v1.zip` | 58.0 % (54.7 % unseen = missed) | 58.0 % (54.7 %) | ≥ 50 % |
+| … precision ≥1 / ≥2 | same | 27.1 / 72.4 % | 27.1 / 72.4 % | |
+| Sept 2024 vs EMSR758 MONIT01, recall ≥1 | `2024-09-12 2024-09-25 --reference …MONIT01_v1.zip` | not run on GFM before | 70.0 % (65.3 % unseen = missed) | |
+| … precision ≥1 / ≥2 | same | | 16.0 / 57.5 % | |
+| Spring 2024, land flagged ≥1 / ≥2 / ≥3 | `2024-04-20 2024-05-06` | 9.06 / 2.17 / 0.32 % | 9.06 / 2.17 / 0.32 % | ≤ 1 %, fails |
+
+**Botoșani (EMSR293 AOI01), `2018-06-29 2018-07-12 --area-from-reference`:**
+
+| Outline | EMS flood | Seen by GFM | Precision ≥1 | Recall ≥1 (seen part) | Recall, unseen = missed |
+|---|---|---|---|---|---|
+| 2 July (PRODUCT) | 314 ha | 98 % → **97.6 %** | 96.7 % → **96.9 %** | 67.6 % → **65.4 %** | 66.0 % → **63.9 %** |
+| 3 July (MONIT01) | 373 ha | 97 % → **97.3 %** | 99.3 % → **99.3 %** | 58.5 % → **56.6 %** | 56.9 % → **55.0 %** |
+
+- **What 1a drops in the window:** 2 of the 31 scenes.
+  - **2 July 16:00** (`ENSEMBLE_FLOOD_20180702T160053_VV_EU020M_E060N015T3`): the only scene of that pass over the area, so the whole pass drops out. It's the real flood scene noted above.
+  - **7 July 04:12** (`ENSEMBLE_FLOOD_20180707T041222_VV_EU020M_E060N015T3`): it saw none of the area, so it changes nothing.
+- **Passes that saw the area:** 9 before, 8 now.
+- **Effect:** recall falls by about 2 points on each outline, and precision stays the same or rises slightly.
+- **For decision 2 (L9):** under 1a the ensemble's Botoșani recall at ≥1 pass is **65.4 %** (2 July) and **56.6 %** (3 July), on the seen part, as in the first table. A per-algorithm rule must reach at least **55.4 %** and **46.6 %**.
+
+**How these were run**
+- **The Botoșani command wasn't recorded.** It is recovered from the log above ("2 of the 31 passes from 2018"): `2018-06-29 2018-07-12` gives 31 scenes holding these 2 missing layers, and `2018-07-13` gives 34. Ending on the label's last day is also how the September commands were written. With `2018-07-13` the ≥1 numbers are identical.
+- **The Botoșani outlines** exist only in EMS's old format (shapefiles: `EMSR293_01BOTOSANI_01DELINEATION_MAP_v1_vector.zip`, `…_MONIT01_v1_vector.zip`, from mapping.emergency.copernicus.eu). They were converted with every feature kept (`checks/ems_reference/convert_old_format.py`) to the zip layout `flood_common.ems()` reads (`EMSR293_AOI01_DEL_PRODUCT_v1.zip`, `…MONIT01_v1.zip`). Check: 313.6 and 373.3 ha on the grid, against 314 and 373 logged; one shared area of interest.
+- **"Unseen = missed"** = true positives ÷ all EMS flood pixels in the area of interest, seen or not. `gfm_score.py` doesn't print it; it was computed from the `--write` output, and it reproduces the logged Galați 54.7 %.
+- **The September windows end one day early.** `… 2023-09-25` covers 12–24 Sept, while the criterion says 12–25. Re-run with `2023-09-26`: the one pass on 25 Sept 2023 (04h) saw none of the AOI, so the dry rate stays at 0.09 %. No GFM scene exists on 25 Sept 2024.
+
+## Flood history 2015 – 13 Apr 2025 (F3), 26 Nov 2026
+The history `flood_gfm.tif` is extended from 2024 to the whole GFM v3 period (decision 1b). The plan's fallback, if the build couldn't finish by Sat 28 Nov or made the API slow, was to keep 2024 only. Both were measured first.
+
+### One month first: June 2019
+`flood_gfm.py 2019-06-01 2019-07-01`, a two-satellite month (97 scenes, the 2019 average is 91) on the track with missing advisory layers.
+
+| Measured | |
+|---|---|
+| Scenes / passes / passes that saw the AOI | 97 / 42 / 15 |
+| Scenes dropped by 1a (no advisory layer) | 8: five 04:29 scenes, every 6 days, and three 16:00 scenes, every 12 days |
+| Passes with flood (one band each) | 11 |
+| Wall time | 3 min 46 s, of which the catalogue query took ~16 s and the final write 7 s |
+| File | 3.45 MB, 13 bands |
+
+- **The run found a bug:** on a fresh clone, without `data/processed/`, the first build crashed at pass 10, because the checkpoint was saved before the folder was created. Fixed in the same PR (`OUT.mkdir` before the loop).
+- **Extrapolated:** about 2.2 s per scene. 2015–2024 has 8,361 scenes (table above), plus 2025 up to 13 Apr, so about 8,550 scenes, which is **5–5½ hours** of reading.
+- **Bands:** 2024 has 88 flood passes from 630 scenes (14 %), June 2019 11 from 97 (11 %), so the 10-year file gets roughly **950–1,200 bands**.
+
+### How the file scales: synthetic test at 1,200 bands
+The 88 real flood bands of the 2024 file were repeated to 1,200 bands and written with `flood_gfm.py`'s own code (same checkpoint, GTiff options and COG copy). Synthetic, measurement only.
+
+| Measured at 1,200 bands | |
+|---|---|
+| Flood indices in memory / one checkpoint save | 472 MB / 0.6 s (605 MB file), every 10 passes, about 2 min over the run |
+| GTiff write | ≤ 4 min, 120 MB |
+| **COG copy as the code was** (with overviews) | **over 49 min on one core without finishing; stopped** |
+| COG copy with `NUM_THREADS=6` | still in the overview step after 30 min, using ~2.5 of 6 cores (GDAL builds overviews mostly on one thread); stopped |
+| COG copy with `OVERVIEWS="NONE"` | **5.7 min**, 100 MB |
+
+**`POST /evidence`** on the 20 test plots (in-process, warm, same machine):
+
+| `flood_gfm.tif` | Median per plot | Slowest plot |
+|---|---|---|
+| 2024 file (88 flood bands, pixel interleave, with overviews) | 0.19–0.22 s | 0.54 s |
+| Synthetic 10-year (1,202 bands, band interleave, no overviews) | 0.59 s | 1.67 s |
+
+- **Result: the build fits before Saturday and the API stays usable,** so the fallback isn't needed.
+- **One change:** the overview step would have added an hour or more, with no known end, after 5½ hours of reading, so `flood_gfm.tif` is now written without overviews. The API reads full resolution only; the old overviews were cubic-resampled, meaningless on 0/1 bands. Why, and how to revert it: *Why these choices* (COG) in [architecture.md](architecture.md).
+- **API cost:** the API reads every band under the plot, so its time grows with the band count: about 3× for 13× the bands. If it matters later, read only the bands with flood under the plot. Not done now.
+
+### Full run
+`uv run python pipeline/flood_gfm.py 2015-01-01 2025-05-01`. The end date lies past the v3 → v4 change on purpose, so the history stops on the catalogue's version change (decision 1b) and not on a date we typed.
+- **First start, 26 Nov 2026 17:14, stopped at 17:22 on purpose** (moved to another machine). The catalogue gave **8,543 scenes** (as the plan said), and the run printed "GFM's major version changes on 2025-04-14: the history stops before that day", so decision 1b works on the real catalogue. 51 passes were done (Jan–Apr 2015) and no scene had been dropped by 1a yet.
+- **How to run it:** detached, so closing the terminal doesn't stop it, with a timestamped log in `data/processed/` (gitignored):
+  `setsid nohup bash -c 'uv run python -u pipeline/flood_gfm.py 2015-01-01 2025-05-01 2>&1 | gawk "{print strftime(\"%F %T\"), \$0; fflush()}" >> data/processed/flood_gfm_2015-2025.log' < /dev/null > /dev/null 2>&1 &`
+  The whole pipe must be inside `setsid`, or the log writer dies with the terminal and takes the build with it. If the build dies, the same command resumes from `data/processed/flood_gfm_1a_2015-01-01_2025-04-14.checkpoint.npz`.
+- **Expected:** 5–5½ h of reading, then ~10 min of writing; 950–1,200 bands; `period_end` tag 2025-04-14 (the API reports 2025-04-13).
+- **Second start, 27 Nov 2026, on another machine (Ryzen 7 7700, 8 cores / 16 threads, 30 GB): done.**
+  - **Serial, 16:58 – 17:14:48:** 160 passes (Jan – 14 Dec 2015) in 13.7 min of reading, after ~3 min of catalogue query. At that pace the 3,619 passes would have taken about 5.2 h, as expected. The machine was at half of one core: the build waited on HTTP and warped one scene at a time.
+  - **Parallel, from 17:14:48** (commit `dd2f3da`): `gfm_score.passes()` now reads 8 passes at once (`WORKERS` in `flood_gfm.py`); the output and its order don't change. Checked first on June 2019: 8 workers and 1 worker gave the same file (13 bands, same band names, tags and pixels) and the same log, 36 s against 189 s, 7.6 GB peak memory. Stopped the serial run, same command again: it resumed from the checkpoint at 160 passes.
+  - **Times:** catalogue query 17:14:48 – 17:17:06; reading 17:17:06 – 18:08:04 (**51 min** for 3,459 passes); final write 18:08:04 – 18:11:00 (**2 min 56 s**). From the first start to the file: 1 h 13 min.
+
+| Measured | |
+|---|---|
+| Scenes | **8,543** (2015-01-01 – 2025-04-13; the history stopped on the version change, 2025-04-14) |
+| Passes | **3,619**; 3,615 listed in `gfm_versions` (in 4 passes no scene counted) |
+| Scenes dropped by 1a (no advisory layer) | **219** unique, as expected: 6 / 11 / 14 / 54 / 68 / 42 / 24 in 2015 – 2021, none in 2022 – 2025. The log has 220 such lines: the restart re-read the 5 passes done after the last checkpoint, one of them with a dropped scene |
+| Read failures, retries, moved files | 0 |
+| Bands | **948**: n_flooded, n_passes and **946** passes with flood (2015: 47, 2016: 77, 2017: 130, 2018: 132, 2019: 121, 2020: 98, 2021: 98, 2022: 71, 2023: 59, 2024: 88, 2025: 25) |
+| File | **81.4 MB**, COG, band interleave, no overviews |
+| Tags | `period_start` 2015-01-01, `period_end` 2025-04-14 (exclusive; the API says 2025-04-13); `gfm_versions`: all 3,615 passes `GFM v3.1.0` |
+| Grid | EPSG:32635, 5910 × 5620, origin (538820, 5078150), 10 m: **identical** to `worldcover.tif` (crs, transform, width, height) |
+| AOI seen by ≥1 pass | **59 %** (2024 file: 58.7 %) |
+| Ever flooded, share of the seen area | **44.27 %** (2024 file: 13.34 %); in ≥2 passes 28.71 % (2024: 5.06 %) |
+
+- **Ever flooded tripled.** The 44 % sums every single-pass flag over 10 years, real floods and false alarms alike; it isn't a flood map. Which of it is real isn't checked here. On the 20 test plots the new dates are all in January – May (F6 below).
+
+## The 20 test plots on the 10-year file (F6), 27 Nov 2026
+`api/test_plots.py` on the F3 file (2015-01-01 – 2025-04-13, 946 flood bands) against the 2024 file it replaces (`flood_gfm_2024_10-11-2026.tif` on the Drive, 88 flood bands). Same `hand.tif`, `ground.tif`, `worldcover.tif`. The method wasn't changed. The 2024 table: `FLOOD_PATH=data/processed/flood_gfm_2024_10-11-2026.tif uv run python api/test_plots.py`.
+
+- **`period_start` / `period_end`** in the answer: **2015-01-01 / 2025-04-13**, as expected.
+- **`uv run pytest`:** 2024 file 70 passed, 4 xfailed; **10-year file 68 passed, 3 failed, 4 xfailed**; with the 3 marked as expected failures (PR #23), 68 passed, 7 xfailed.
+  - **The 4 xfails** (spring false alarm, `xfail(strict=True)`) still fail, as expected: no unexpected pass.
+  - **The 3 failures are new and known**, now expected failures on a file that starts before 2024 (`xfail(strict=True)`, lead, 27 Nov; on the 2024 file the test still has to pass): `test_dry_plot_has_no_flood_date` on `floodplain-dry-1/2/3`. See *The dry plots* below.
+
+| Plot | Expect | 2024 file: passes, flooded, flood dates (cropland share) | 10-year file: passes, flooded, flood dates added (cropland share) |
+|---|---|---|---|
+| flood-pechea-1 | sept 2024 | 69, 100 %: 2024-09-14 (18 %) | 1010, 100 %: none added |
+| flood-pechea-2 | sept 2024 | 67, 100 %: 2024-09-14 (28 %), 09-21 (0 %) | 983, 100 %: 2016-10-14 (22 %), 2018-04-20 (100 %), 2018-04-27 (98 %) |
+| flood-pechea-3 | sept 2024 | 65, 90 %: 2024-09-21, 09-26 (100 %) | 974, 91 %: 2021-03-22 (100 %) |
+| flood-north-1 | sept 2024 | 66, 100 %: 2024-09-10, 09-21 (100 %) | 983, 100 %: 14 dates, all 100 %: 2017-01-12, 01-18, 01-26; 2019-03-15, 03-21, 03-27, 04-02, 04-10; 2021-04-28, 05-03, 05-05, 05-09; 2023-04-25, 05-07 |
+| flood-and-spring-1 | probe | 75, 100 %: 2024-05-01, 05-25, 09-21, 09-26 (100 %) | 1019, 100 %: none added |
+| polder-1 | spring false alarm | 65, 100 %: 2024-04-30 (100 %) | 929, 100 %: 2021-03-30, 2022-04-10, 2022-05-16 (100 %) |
+| polder-2 | spring false alarm | 77, 99 %: 2024-04-30, 05-01, 05-12 (100 %) | 921, 100 %: 2019-04-22, 2021-05-05 (100 %) |
+| polder-3 | spring false alarm | 60, 100 %: 2024-02-23, 04-30, 05-01, 05-05, 05-12 (100 %) | 790, 100 %: 2018-04-08 (100 %) |
+| spring-west-1 | spring false alarm | 90, 100 %: 2024-04-11, 04-30, 05-01, 05-05 (100 %) | 1292, 100 %: 2015-01-12 (100 %) |
+| plateau-1/2/3 | unknown | unknown, 0 % seen | unknown, 0 % seen |
+| edge-40, edge-50 | probe | unknown (38 %, 48 % seen) | unknown (same) |
+| edge-65 | probe | 66, 25 %: 2024-05-25, 08-09 (0 %) | 1017, 26 %: none added |
+| **floodplain-dry-1** | **never flooded** | 73, 0 %: none | 868, **26 %**: 2020-05-14, 2022-03-17 (100 %) |
+| **floodplain-dry-2** | **never flooded** | 64, 0 %: none | 957, **82 %**: 2021-05-05 (98 %), 05-09, 05-16 (100 %) |
+| **floodplain-dry-3** | **never flooded** | 65, 0 %: none | 939, **98 %**: 2020-02-26, 2021-03-30, 04-11, 2022-04-10, 04-22, 2023-01-19, 03-08 (100 %) |
+| water-edge-1 | probe | 37, 0 %: none | 617, 37 %: 2015-04-18 (0 %) |
+| manta-wetland-1 | probe | 10, 0 %: none | 172, 0 %: none |
+
+"passes" is the median count of passes that saw the plot; "flooded" the share of the plot flagged in ≥1 pass. The 2024 dates and their cropland shares are the same on both files.
+
+- **Every added date but one is in January – May**; the exception is `flood-pechea-2` 2016-10-14 (22 %). The spring ones are 98 – 100 % cropland, except `water-edge-1` 2015-04-18 (0 %, not farmland).
+- **Cropland share, per date against pooled** (asked in F6: do 10 years of spring flags change it?). The 2024 per-date numbers don't change. Pooled over every pixel ever flagged on the plot gives 18 / 27 / 100 / 100 % on `flood-pechea-1/2/3`, `flood-north-1` on both files, so on these plots pooling didn't drift either. Per date is still the more informative: on `flood-pechea-2` pooled stays 27 %, while per date the 2018 spring dates read 100 / 98 % and Sept 2024 28 / 0 %.
+
+### The dry plots now fail: known, not fixed (27 Nov 2026)
+`floodplain-dry-1/2/3` were labelled `never_flooded` from the 2024 file, and the test asserts no flood date over the whole history. On the 10-year file they get 2, 3 and 7 dates in 2020 – 2023, none in 2024. **Left failing on purpose** (Sover's decision, 27 Nov): no marker, no change to the test or the method. It is to be fixed once the team decides whether to use Sentinel-2 (*Open decisions → False flood dates outside real floods* in [architecture.md](architecture.md)).
+- **What fits the spring false alarm:** every one of the 12 dates is in January – May (tillage season), 98 – 100 % cropland on the plot, and none is in a verified flood.
+- **What doesn't prove it:** region-wide, a real flood looks the same in our data.
+
+| Region-wide (whole AOI) | Cropland share of the flagged land | Share inside the 30 Apr / 1 May 2024 false-alarm footprint (16,657 ha) |
+|---|---|---|
+| The 12 dates (141 – 7,624 ha each) | 87 – 100 % | 10 – 40 % |
+| 2024 false alarm, 30 Apr / 1 May | 98.9 / 99.2 % | (the footprint) |
+| Real flood, 14 / 21 Sept 2024 | 75.5 / 94.0 % | 9.5 / 30.1 % |
+
+  Several dates flag thousands of hectares (2021-03-30: 7,624 ha), which could be spring high water as much as tilled soil. River levels and EMS activations for these dates weren't checked.
+- **What would settle it:** a clear Sentinel-2 image near each date, as for 30 Apr 2024 (bare fields, no water). Not run. Sentinel-2 is suggested as part of the fix for the spring false alarm in general: what it could and couldn't do, and its cost, in [architecture.md](architecture.md), *Open decisions → False flood dates outside real floods*.
+- **For whoever picks this up:** `uv run pytest` with the 10-year file gives 3 xfails in `test_dry_plot_has_no_flood_date`; they are this, not a regression. When the dates go away the test passes, and strict turns that into a failure: remove the mark. If they're confirmed false alarms, they belong with the spring false alarm (`test_no_flood_date_in_the_spring_no_flood_window`, xfail strict). If they're real floods, `plots.geojson` mislabels the plots.
+
+### API time on the real file
+`checks/api_timing/api_timing.py`, `POST /evidence` on the 20 plots, in-process, warm, on the F3 machine (Ryzen 7 7700), idle:
+
+| `flood_gfm.tif` | Median per plot | Slowest plot |
+|---|---|---|
+| 2024 file (88 flood bands) | 0.06 s | 0.11 – 0.17 s |
+| **10-year file (946 flood bands, no overviews)** | **0.13 s** | **0.76 s** |
+
+This machine is about 3× faster than the one of the synthetic estimate (2024 file there: 0.19 – 0.22 s median, 0.54 s slowest; synthetic 1,202 bands: 0.59 / 1.67 s). On the same machine the 10-year file costs about 2× the median and 5× the slowest plot of the 2024 file.

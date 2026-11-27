@@ -21,3 +21,4 @@ Read `docs/architecture.md` before changing anything: it records what the team a
   - no speculative scaffolding, abstractions or stub folders
   - flood thresholds live as constants in `pipeline/flood_earthengine.py`; bump `ALGORITHM_VERSION` when you change them
 - **Docs:** if you change a decision, update `docs/architecture.md` in the same commit.
+- **`flood_gfm.tif` has no COG overviews** (since 26 Nov 2026): the overview step made the 10-year build hang. If you add TiTiler or a map of the flood layer, read the revert steps in `docs/architecture.md` ("Why these choices", COG) first.

@@ -6,7 +6,7 @@ shadow) and where its result is unreliable that pass (advisory flags: dry or til
 snow, wind on water). Both count as "not seen". Validated against Copernicus EMS on two events:
 docs/flood-validation.md.
 
-  uv run python pipeline/flood_gfm.py 2024-01-01 2025-01-01
+  uv run python pipeline/flood_gfm.py 2015-01-01 2025-05-01   # stops on 2025-04-14 (v3 -> v4), ~1¼ h
 
 Writes data/processed/flood_gfm.tif on the AOI grid (UTM 35N, 10 m):
   band 1  n_flooded   passes that saw flood water on the pixel
@@ -34,6 +34,7 @@ from flood_common import CRS, OUT, grid
 from gfm_score import items, passes
 
 PATH = OUT / "flood_gfm.tif"
+WORKERS = 8  # passes read at once: June 2019 took 36 s instead of 189 s, identical file, 7.6 GB peak memory; lower it on a smaller machine
 
 
 def major(feat):
@@ -106,6 +107,7 @@ def main():
     print(f"GFM {a.start}..{end}: {len(feats)} items", flush=True)
 
     transform, width, height = grid()
+    OUT.mkdir(parents=True, exist_ok=True)  # before the loop: the first checkpoint is saved at pass 10
     # "1a" keeps a checkpoint from before that decision (missing advisory layer = no warnings) from being resumed
     checkpoint = OUT / f"flood_gfm_1a_{a.start}_{end}.checkpoint.npz"
     n_flooded, n_passes, flood_bands, done, used = load_checkpoint(checkpoint, (height, width))
@@ -115,7 +117,7 @@ def main():
         print("  this checkpoint doesn't record dropped scenes: gfm_versions lists all scenes of its passes",
               flush=True)
         used = {f["id"] for f in feats if f["properties"]["datetime"][:13] in done}
-    for key, seen, flooded, frames in passes(feats, skip=done):
+    for key, seen, flooded, frames in passes(feats, skip=done, workers=WORKERS):
         n_passes += seen
         n_flooded += flooded
         if flooded.any():
@@ -126,7 +128,6 @@ def main():
             save_checkpoint(checkpoint, n_flooded, n_passes, flood_bands, done, used)
 
     tmp = PATH.with_suffix(".part.tif")
-    OUT.mkdir(parents=True, exist_ok=True)
     with rasterio.open(tmp, "w", driver="GTiff", dtype="uint16", count=2 + len(flood_bands), crs=CRS,
                        transform=transform, width=width, height=height, compress="deflate", tiled=True,
                        interleave="band", BIGTIFF="IF_SAFER") as dst:  # pixel (the default) rewrites every band per band
@@ -140,7 +141,10 @@ def main():
         dst.update_tags(source="Copernicus GFM ensemble flood extent + exclusion mask",
                         period_start=a.start.isoformat(), period_end=end,
                         gfm_versions=json.dumps(versions([f for f in feats if f["id"] in used]), separators=(",", ":")))
-    rio_copy(tmp, PATH, driver="COG", compress="deflate", interleave="band", BIGTIFF="IF_SAFER")
+    # No overviews (26 Nov 2026, F3): at ~1,200 bands GDAL's overview step ran over 49 min without finishing
+    # (5.7 min without it), and the API reads full resolution only. Revert by deleting OVERVIEWS="NONE";
+    # TiTiler would need overviews, built with nearest resampling (0/1 bands). See architecture.md, "Why these choices".
+    rio_copy(tmp, PATH, driver="COG", compress="deflate", interleave="band", BIGTIFF="IF_SAFER", OVERVIEWS="NONE")
     tmp.unlink()
     checkpoint.unlink(missing_ok=True)
     seen = n_passes > 0
