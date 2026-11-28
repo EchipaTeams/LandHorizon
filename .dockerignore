@@ -1,0 +1,7 @@
+# The image only needs pyproject.toml, uv.lock and api/. Keep data, secrets and everything else out.
+*
+!pyproject.toml
+!uv.lock
+!api/
+api/test_*.py
+**/__pycache__

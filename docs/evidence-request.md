@@ -53,3 +53,5 @@ The API has no CORS setting. Locally that works, because the browser only talks 
 - **CORS in FastAPI** (`CORSMiddleware`), allowing only the website's address.
 
 The choice belongs to the deploy task. Until it is made, don't add a CORS setting that allows every origin (`*`).
+
+**Proposed by the deploy task (G4, 28 Nov 2026, for the lead's review): one domain, with Caddy as the reverse proxy** (`Caddyfile`, `docker-compose.yml`). `/evidence`, `/docs` and `/openapi.json` go to the API; every other path serves the website's build output (`WEB_DIST`), with `index.html` for routes of the single-page app. No CORS setting is added, so the call above works unchanged. Caddy gets the HTTPS certificate for the domain by itself.

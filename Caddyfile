@@ -1,0 +1,23 @@
+# One domain for the website and the API. SITE_ADDRESS comes from .env: ":80" locally (plain HTTP),
+# the domain on the server (e.g. landhorizon.example), for which Caddy gets an HTTPS certificate by itself.
+{$SITE_ADDRESS}
+
+encode gzip
+
+# The API: the evidence request and its docs.
+handle /evidence {
+	reverse_proxy api:8000
+}
+handle /docs* {
+	reverse_proxy api:8000
+}
+handle /openapi.json {
+	reverse_proxy api:8000
+}
+
+# Everything else is the website (a single-page app): a file if it exists, otherwise index.html.
+handle {
+	root * /srv/web
+	try_files {path} /index.html
+	file_server
+}

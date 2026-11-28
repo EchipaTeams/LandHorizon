@@ -52,3 +52,12 @@ uv run python pipeline/flood_local.py --event 2024-09-12 2024-09-25
 ```
 
 Contains modified Copernicus Sentinel data, processed with ESA SNAP, and modified Copernicus Emergency Management Service information (GFM). Permanent water: JRC Global Surface Water v1.4 (Pekel et al., 2016, Nature 540, 418–422, [doi:10.1038/nature20584](https://doi.org/10.1038/nature20584)). Source: EC JRC/Google. Land cover: © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium (CC BY 4.0).
+
+## Deploy
+The API runs in Docker behind a reverse proxy (Caddy), so the website and `/evidence` share one domain and need no CORS ([docs/evidence-request.md](docs/evidence-request.md#deployment-not-decided-yet)). The COGs come from a folder mounted into the container, never from the image or git.
+
+1. Copy `.env.example` to `.env` and fill it in: `SITE_ADDRESS` (`:80` locally, the domain on the server), `DATA_DIR` (the folder with the four COGs), `FLOOD_FILE` (the flood file's name in it), `WEB_DIST` (the website's `npm run build` output).
+2. `docker compose up -d --build`
+3. Check: `http://localhost/docs` locally, or `https://<domain>/docs` on the server; `POST /evidence` answers through the same address.
+
+On a server, the domain's DNS record must point to it and ports 80 and 443 must be open; Caddy then gets the HTTPS certificate by itself. To update a COG, replace the file in `DATA_DIR` and run `docker compose restart api`.

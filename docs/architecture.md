@@ -113,7 +113,7 @@ Rules:
 ## Data and updates
 - `data/raw/` and `data/processed/` are gitignored. The COGs the API reads (`hand.tif`, `flood_gfm.tif`, `ground.tif`, `worldcover.tif`) are shared on the **team Drive**: copy them into `data/processed/`. The API answers 503 while one is missing, so this is the first step after cloning (README, *Run it*). It matters most for `ground.tif`: EGMS needs a login and can't be scripted. `worldcover.tif` (public data, a few seconds to build, ~2 MB) is rebuilt with `pipeline/worldcover.py` whenever the flood grid changes.
 - `data/sample/` is committed (small files only): the 20 test plots. `api/test_main.py` builds its own tiny rasters, so `uv run pytest` passes on a clean clone; `api/test_plots.py` is skipped until the four COGs are in place.
-- The deployed server reads COGs from a Docker volume or bucket URL.
+- The deployed server reads COGs from a Docker volume: `docker-compose.yml` mounts a folder holding the four COGs read-only into the API container (`DATA_DIR`, and `FLOOD_FILE` for the flood file's name, in `.env`). They are never in the image or in git, so a new `flood_gfm.tif` is a file swap and a restart, not a rebuild (README, *Deploy*).
 - **For the demo the data is frozen**, so validation and pitch numbers stay fixed. The pipeline stays one re-runnable command with a date range.
 - **In a real product:** a separate scheduled job, not the web app, processes new passes into a new versioned COG.
 
@@ -166,7 +166,10 @@ LandHorizon/
 │   ├── architecture.md          this file
 │   ├── evidence-request.md      how the website sends a plot to POST /evidence and handles the answers
 │   └── flood-validation.md      flood test runs and their results
-├── docker-compose.yml           (planned, W4) API + web for the deployment
+├── Dockerfile                   the API image (Python 3.14, the locked dependencies, no data)
+├── docker-compose.yml           the deployment: the API behind Caddy, COGs from a volume
+├── Caddyfile                    the reverse proxy: /evidence, /docs, /openapi.json → API; the rest → website
+├── .env.example                 deployment settings (copy to .env, gitignored): domain, data folder, website build
 ├── pyproject.toml               Python dependencies (uv)
 ├── uv.lock                      exact pinned versions, committed
 ├── AGENTS.md                    rules for AI assistants and new teammates
