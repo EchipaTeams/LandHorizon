@@ -1,0 +1,37 @@
+# The deployment: the API behind a reverse proxy (Caddy), so the website and /evidence share one domain and
+# the browser never makes a cross-site call (no CORS; docs/evidence-request.md, "Deployment").
+# Settings come from .env (gitignored; copy .env.example). Start: docker compose up -d --build
+services:
+  api:
+    build: .
+    restart: unless-stopped
+    volumes:
+      # The four COGs, read-only. A new flood_gfm.tif is a file swap and a restart, not a rebuild.
+      - ${DATA_DIR:-./data/processed}:/app/data/processed:ro
+    environment:
+      # hand.tif, ground.tif and worldcover.tif are found by their default names in that folder.
+      FLOOD_PATH: /app/data/processed/${FLOOD_FILE:-flood_gfm.tif}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/openapi.json')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    # No ports: only the proxy can reach the API.
+
+  proxy:
+    image: caddy:2.10.2
+    restart: unless-stopped
+    depends_on: [api]
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # The website's build output (npm run build in the website repo); empty until the website is deployed.
+      - ${WEB_DIST:-./dist}:/srv/web:ro
+      - caddy_data:/data   # HTTPS certificates; kept across restarts
+
+volumes:
+  caddy_data:
